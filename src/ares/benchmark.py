@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+import psutil
 
 from ares.backends import build_spec
 from ares.config import load_profile
@@ -40,6 +41,8 @@ def measure(spec, *, repetitions=3, timeout=120):
                     "tokens_per_second": "",
                     "finish_reason": "",
                     "status": "failed",
+                    "peak_process_tree_ram_gib": "",
+                    "host_available_ram_gib": "",
                 }
                 try:
                     response = client.post(
@@ -73,6 +76,13 @@ def measure(spec, *, repetitions=3, timeout=120):
                 row["elapsed_seconds"] = round(time.monotonic() - started, 4)
                 if row["completion_tokens"] and row["elapsed_seconds"] > 0:
                     row["tokens_per_second"] = round(row["completion_tokens"] / row["elapsed_seconds"], 3)
+                row["host_available_ram_gib"] = round(psutil.virtual_memory().available / 2**30, 3)
+                if spec.get("state_dir"):
+                    try:
+                        memory = json.loads((Path(spec["state_dir"]) / "llm-memory.json").read_text())
+                        row["peak_process_tree_ram_gib"] = round(memory["peak_rss"] / 2**30, 3)
+                    except (OSError, ValueError, KeyError):
+                        pass
                 rows.append(row)
     return rows
 

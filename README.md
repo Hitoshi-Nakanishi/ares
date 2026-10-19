@@ -82,7 +82,9 @@ small instruction, arithmetic and extraction cases record correctness, wall late
 tokens per second when supplied. Missing usage stays missing. The rate includes prompt processing, not just decoding. Repeated
 requests can reuse caches; record cold and warm runs separately. These smoke cases do not establish analyst-report quality,
 DB persistence, long-context capacity or sustained throughput. Record hardware, engine version and model/quantization
-provenance alongside any comparison. The CSV saves prompt hashes, not raw prompts or responses.
+provenance alongside any comparison. The CSV saves prompt hashes, not raw prompts or responses. Memory columns report
+host-available physical RAM after each request and the runner's process-tree peak since engine startup; Docker client RSS is
+not container memory.
 
 ## Development and distribution
 

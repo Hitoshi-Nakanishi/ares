@@ -11,6 +11,7 @@
 !/tests/
 /tests/*
 !/tests/test_*.py
+!/tests/conftest.py
 !/examples/
 /examples/*
 !/examples/strata.example.json
