@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import httpx
 import psutil
@@ -16,6 +17,9 @@ def test_server_environment_allows_slow_first_start(monkeypatch):
     assert strata.server_environment()["STRATA_ENGINE_READY_S"] == "7200"
     monkeypatch.setenv("STRATA_ENGINE_READY_S", "2400")
     assert strata.server_environment()["STRATA_ENGINE_READY_S"] == "2400"
+    monkeypatch.setenv("PYTHONPATH", "application-source")
+    expected = str(Path(strata.__file__).resolve().parents[1])
+    assert strata.server_environment()["PYTHONPATH"].split(os.pathsep) == [expected, "application-source"]
 
 
 def test_stale_or_unrelated_pid_is_not_owned(tmp_path):

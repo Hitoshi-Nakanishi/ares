@@ -23,6 +23,8 @@ def server_environment() -> dict[str, str]:
     """Allow enough time for the configured resident expert copy on first start."""
     environment = os.environ.copy()
     environment.setdefault("STRATA_ENGINE_READY_S", str(DEFAULT_START_WAIT_SECONDS))
+    source = str(Path(__file__).resolve().parents[1])
+    environment["PYTHONPATH"] = os.pathsep.join(filter(None, (source, environment.get("PYTHONPATH"))))
     return environment
 
 
