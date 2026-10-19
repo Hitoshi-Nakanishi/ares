@@ -1,0 +1,38 @@
+version: 1
+backend: strata
+host: 127.0.0.1
+port: 54321
+state_dir: .local
+memory:
+  ram_gib: 32
+  available_gib: 32
+  startup_available_gib: 64
+  free_commit_gib: 48
+  job_commit_gib: 100
+backends:
+  strata:
+    home: ${STRATA_HOME}
+    config: ${STRATA_CONFIG}
+    options:
+      resident_budget_gib: 8
+      vram_reserve_mib: 10000
+      max_context: 32768
+      kv_resident: 8192
+      prefill: 1024
+      ple_io: direct
+      cpu_share: 0
+  vllm:
+    mode: docker
+    image: ${VLLM_IMAGE}
+    model_path: ${VLLM_MODEL_PATH}
+    model: ${VLLM_MODEL}
+    gpu_memory_utilization: 0.9
+    max_model_len: 8192
+    max_num_seqs: 1
+    cpu_offload_gb: 0
+    swap_space_gib: 0
+  ollama:
+    executable: ollama
+    model: ${OLLAMA_MODEL}
+    context_length: 8192
+    vram_reserve_mib: 10000

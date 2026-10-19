@@ -10,7 +10,10 @@ STARTUP_COMMIT_GIB = JOB_COMMIT_GIB + 48
 
 
 def require_memory_headroom(*, available_gib: int, commit_gib: int) -> None:
+    available = psutil.virtual_memory().available / 2**30
     if os.name != "nt":
+        if available < available_gib:
+            raise MemoryError(f"Insufficient physical RAM headroom (required {available_gib} GiB)")
         return
 
     class PerformanceInformation(ctypes.Structure):

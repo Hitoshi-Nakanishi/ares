@@ -9,7 +9,8 @@ from pathlib import Path
 
 import psutil
 
-from ares.resources import JOB_COMMIT_GIB, STARTUP_COMMIT_GIB, require_memory_headroom
+from ares.config import MemoryLimits
+from ares.resources import require_memory_headroom
 from ares.windows_memory import WindowsMemoryJob
 
 RAM_LIMIT_GIB = 32
@@ -47,54 +48,39 @@ def save_snapshot(record, snapshot):
     return False
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--port", type=int, required=True)
-    args = parser.parse_args(argv)
-    if os.name != "nt":
-        raise SystemExit("The bounded native supervisor requires Windows")
-    root = args.config.resolve().parent
-    require_memory_headroom(available_gib=64, commit_gib=STARTUP_COMMIT_GIB)
-    job = WindowsMemoryJob()
+def supervise(command, cwd, record, *, limits=None, environment=None, label="Strata"):
+    limits = limits or MemoryLimits()
+    require_memory_headroom(
+        available_gib=limits.startup_available_gib, commit_gib=limits.job_commit_gib + limits.free_commit_gib
+    )
+    job = WindowsMemoryJob(commit_gib=limits.job_commit_gib) if os.name == "nt" else None
     child = None
-    snapshot = {"status": "starting", "ram_limit_gib": RAM_LIMIT_GIB, "job_commit_limit_gib": JOB_COMMIT_GIB}
-    record = root / "strata-memory.json"
+    snapshot = {"status": "starting", "ram_limit_gib": limits.ram_gib, "job_commit_limit_gib": limits.job_commit_gib}
     peak_rss = peak_commit = 0
     last_snapshot_warning = float("-inf")
     result = 1
     try:
         child = subprocess.Popen(
-            [
-                str(root / ".venv/Scripts/python.exe"),
-                "-u",
-                "-m",
-                "serve.server",
-                "--engine",
-                "strata",
-                "--host",
-                "127.0.0.1",
-                "--config",
-                str(args.config.resolve()),
-                "--port",
-                str(args.port),
-            ],
-            cwd=root,
+            command,
+            cwd=cwd,
+            env=environment,
             stdin=subprocess.DEVNULL,
-            creationflags=0x00000004,
+            creationflags=0x00000004 if os.name == "nt" else 0,
+            start_new_session=os.name != "nt",
         )
-        job.resume(child)
+        if job is not None:
+            job.resume(child)
         process = psutil.Process(child.pid)
         while child.poll() is None:
             usage = memory_snapshot(process)
             peak_rss = max(peak_rss, usage["rss"])
             peak_commit = max(peak_commit, usage["commit"])
             snapshot.update(usage, status="running", updated_at=time.time(), peak_rss=peak_rss, peak_commit=peak_commit)
-            if usage["rss"] > RAM_LIMIT_GIB * 2**30:
-                raise MemoryError(f"Strata physical RAM exceeded {RAM_LIMIT_GIB} GiB")
-            require_memory_headroom(available_gib=32, commit_gib=48)
+            if usage["rss"] > limits.ram_gib * 2**30:
+                raise MemoryError(f"{label} physical RAM exceeded {limits.ram_gib} GiB")
+            require_memory_headroom(available_gib=limits.available_gib, commit_gib=limits.free_commit_gib)
             if not save_snapshot(record, snapshot) and time.monotonic() - last_snapshot_warning >= 30:
-                print("Strata memory snapshot unavailable; live memory limits remain active", flush=True)
+                print(f"{label} memory snapshot unavailable; live memory limits remain active", flush=True)
                 last_snapshot_warning = time.monotonic()
             time.sleep(0.5)
         result = child.returncode
@@ -102,16 +88,48 @@ def main(argv=None):
         snapshot["exit_code"] = result
     except (MemoryError, OSError, RuntimeError, psutil.Error) as exc:
         snapshot.update(status="stopped", error=str(exc))
-        print(f"Strata supervisor stopped inference: {exc}", flush=True)
+        print(f"{label} supervisor stopped inference: {exc}", flush=True)
     finally:
-        job.close()
+        if job is not None:
+            job.close()
         if child is not None:
             if child.poll() is None:
+                if os.name != "nt":
+                    for member in reversed(psutil.Process(child.pid).children(recursive=True)):
+                        try:
+                            member.kill()
+                        except psutil.NoSuchProcess:
+                            pass
                 child.kill()
             child.wait(timeout=15)
         snapshot["updated_at"] = time.time()
         save_snapshot(record, snapshot)
     return result
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--port", type=int, required=True)
+    args = parser.parse_args(argv)
+    if os.name != "nt":
+        raise SystemExit("The legacy native supervisor requires Windows; use a YAML profile")
+    root = args.config.resolve().parent
+    command = [
+        str(root / ".venv/Scripts/python.exe"),
+        "-u",
+        "-m",
+        "serve.server",
+        "--engine",
+        "strata",
+        "--host",
+        "127.0.0.1",
+        "--config",
+        str(args.config.resolve()),
+        "--port",
+        str(args.port),
+    ]
+    return supervise(command, root, root / "strata-memory.json")
 
 
 if __name__ == "__main__":

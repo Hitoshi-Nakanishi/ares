@@ -30,7 +30,12 @@ def server_environment() -> dict[str, str]:
 
 def matches_server(process: psutil.Process, root: Path) -> bool:
     command = process.cmdline()
-    entry_points = {"serve.server", "ares.supervisor", str(root / "serve" / "server.py")}
+    entry_points = {
+        "serve.server",
+        "strata_server.supervisor",
+        "ares.supervisor",
+        str(root / "serve" / "server.py"),
+    }
     if not entry_points.intersection(command):
         return False
     try:
@@ -118,6 +123,11 @@ def release_start(lock_file: Path, record: dict[str, float]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "--config" in argv or os.getenv("LOCAL_LLM_CONFIG"):
+        from ares.manager import main as managed_main
+
+        return managed_main(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("start", "stop", "restart", "status"), default="start", nargs="?")
     parser.add_argument("--wait", type=float, default=DEFAULT_START_WAIT_SECONDS)

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ares"
 version = "0.1.0"
-description = "Local-only native Strata server lifecycle with Windows memory protection"
+description = "Local LLM server management with YAML profiles and host-memory protection"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.28,<1", "psutil>=7,<8", "PyYAML>=6,<7"]
