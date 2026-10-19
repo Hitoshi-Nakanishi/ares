@@ -102,9 +102,9 @@ def build_spec(profile, *, materialize=False):
             str(number(settings.get("max_num_seqs", 1), "max_num_seqs", 1)),
             "--cpu-offload-gb",
             str(number(settings.get("cpu_offload_gb", 0), "cpu_offload_gb")),
-            "--swap-space",
-            str(number(settings.get("swap_space_gib", 0), "swap_space_gib")),
         ]
+        if "swap_space_gib" in settings:
+            arguments.extend(("--swap-space", str(number(settings["swap_space_gib"], "swap_space_gib"))))
         spec.update(
             model=settings["model"],
             env={"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "VLLM_NO_USAGE_STATS": "1"},

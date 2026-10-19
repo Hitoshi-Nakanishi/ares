@@ -40,8 +40,10 @@ cache budget, not total process RAM. A VRAM reserve does not control GPU compute
 vLLM Docker mode requires an existing local image and a self-contained local model directory, mounted read-only. Host port
 publishing is loopback-only. Container RAM equals `memory.ram_gib`; equal memory-plus-swap capacity prevents container swap.
 Images are never pulled; model fetching and usage statistics are disabled. Native mode requires Linux. YAML controls GPU
-memory utilization (0.9 by default), context, sequences, CPU offload and swap. Concurrency defaults to one, CPU offload and swap
-to zero. See [vLLM engine arguments](https://docs.vllm.ai/en/latest/configuration/engine_args/).
+memory utilization (0.9 by default), context, sequences and CPU offload. Concurrency defaults to one and CPU offload to zero.
+The optional `swap_space_gib` passes the legacy `--swap-space` flag only when explicitly configured; current vLLM versions no
+longer expose that flag, so the default profile omits it. Container OS swap remains disabled independently. See
+[vLLM engine arguments](https://docs.vllm.ai/en/latest/configuration/engine_args/).
 
 Ollama runs `ollama serve` with a loopback host, one model, one parallel inference and cloud features disabled. YAML controls
 the installed model, model directory, context and GPU overhead reserve. This reserve is a scheduling hint, not a hard VRAM cap;

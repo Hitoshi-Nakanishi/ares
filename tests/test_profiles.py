@@ -90,6 +90,7 @@ def test_vllm_container_is_local_bounded_and_offline(tmp_path):
     assert "--pull=never" in command and "HF_HUB_OFFLINE=1" in command
     assert command[command.index("--gpu-memory-utilization") + 1] == "0.9"
     assert command[command.index("--max-num-seqs") + 1] == "1"
+    assert "--swap-space" not in command
 
 
 def test_ollama_is_local_single_model_and_local_only(tmp_path):
