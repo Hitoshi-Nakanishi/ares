@@ -13,6 +13,17 @@ from ares.backends import build_spec
 from ares.config import MemoryLimits, load_profile
 
 
+@pytest.mark.parametrize("module", ["ares.runner", "ares.runner", "unrelated.runner"])
+def test_renamed_runner_keeps_verified_ownership(tmp_path, monkeypatch, module):
+    spec_path = str((tmp_path / "launch.json").resolve())
+    process = SimpleNamespace(create_time=lambda: 123, cmdline=lambda: ["python", "-m", module, spec_path])
+    monkeypatch.setattr(manager.psutil, "Process", lambda pid: process)
+    record = {"pid": 1, "created": 123, "spec_path": spec_path}
+    assert manager.owned_process(record) is (process if module != "unrelated.runner" else None)
+    assert manager.owned_process({**record, "created": 456}) is None
+    assert manager.owned_process({**record, "spec_path": str(tmp_path / "other.json")}) is None
+
+
 def profile_file(tmp_path, **changes):
     native = tmp_path / "native.json"
     native.write_text(json.dumps({"model_name": "local-model", "args": ["--resident-budget-gib", "32"]}))

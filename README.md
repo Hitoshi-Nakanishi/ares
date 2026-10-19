@@ -1,4 +1,6 @@
-# Local LLM Server
+# Ares
+
+Named for the god of the forge, Ares manages a workstation's GPU inference servers.
 
 Local-only launch and memory supervision for **Strata (default)**, **vLLM**, and **Ollama**. This is server management, not an
 agent framework or inference engine. Model weights, credentials, application workflows and databases are excluded. There is no
