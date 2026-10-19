@@ -1,2 +1,2 @@
-include examples/*.json
-include examples/*.yaml
+include examples/strata.example.json
+include examples/server.example.yaml
