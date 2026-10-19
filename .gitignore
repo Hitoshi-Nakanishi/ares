@@ -3,6 +3,7 @@
 !/.gitattributes
 !/README.md
 !/pyproject.toml
+!/MANIFEST.in
 !/src/
 /src/*
 !/src/ares/

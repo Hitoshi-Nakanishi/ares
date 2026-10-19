@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -136,6 +137,7 @@ def test_container_cleanup_never_stops_an_unowned_container(monkeypatch):
     assert len(calls) == 1
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows job cap and physical memory override")
 def test_memory_override_is_used_by_live_supervision(tmp_path, monkeypatch):
     class Child:
         pid = 10
