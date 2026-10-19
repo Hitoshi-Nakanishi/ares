@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 import psutil
 
-from strata_server.resources import STARTUP_COMMIT_GIB, require_memory_headroom
+from ares.resources import STARTUP_COMMIT_GIB, require_memory_headroom
 
 DEFAULT_START_WAIT_SECONDS = 7200
 
@@ -30,7 +30,7 @@ def server_environment() -> dict[str, str]:
 
 def matches_server(process: psutil.Process, root: Path) -> bool:
     command = process.cmdline()
-    entry_points = {"serve.server", "strata_server.supervisor", str(root / "serve" / "server.py")}
+    entry_points = {"serve.server", "ares.supervisor", str(root / "serve" / "server.py")}
     if not entry_points.intersection(command):
         return False
     try:
@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(state or {"loaded": False}, ensure_ascii=False))
             return 0 if ready else 1
         if ready:
-            if os.name == "nt" and (process is None or "strata_server.supervisor" not in process.cmdline()):
+            if os.name == "nt" and (process is None or "ares.supervisor" not in process.cmdline()):
                 raise SystemExit("Existing Strata has no RAM supervisor; use the managed restart before analysis")
             print(f"Strata ready: {base_url}/v1 model={state['model']}")
             return 0
@@ -191,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(str(exc)) from exc
             python = root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             command = (
-                [sys.executable, "-u", "-m", "strata_server.supervisor"]
+                [sys.executable, "-u", "-m", "ares.supervisor"]
                 if os.name == "nt"
                 else [str(python), "-u", "-m", "serve.server", "--engine", "strata", "--host", "127.0.0.1"]
             )

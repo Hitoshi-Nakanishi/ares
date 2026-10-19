@@ -12,9 +12,9 @@ Use Python 3.11 or newer on Windows. Install native Strata separately and provis
 python -m pip install -e .
 $env:STRATA_HOME = '<native-strata-directory>'
 $env:STRATA_CONFIG = '<private-native-config.json>'
-python -m strata_server start
-python -m strata_server status
-python -m strata_server stop
+python -m ares start
+python -m ares status
+python -m ares stop
 ```
 
 The native installation needs its own `.venv/Scripts/python.exe` with the `serve.server` module and engine dependencies. The

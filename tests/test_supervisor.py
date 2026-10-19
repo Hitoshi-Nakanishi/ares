@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import psutil
 import pytest
 
-from strata_server import supervisor
-from strata_server.windows_memory import WindowsMemoryJob
+from ares import supervisor
+from ares.windows_memory import WindowsMemoryJob
 
 
 def test_memory_snapshot_separates_physical_ram_and_commit():

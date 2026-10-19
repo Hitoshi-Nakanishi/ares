@@ -5,9 +5,9 @@
 !/pyproject.toml
 !/src/
 /src/*
-!/src/strata_server/
-/src/strata_server/*
-!/src/strata_server/*.py
+!/src/ares/
+/src/ares/*
+!/src/ares/*.py
 !/tests/
 /tests/*
 !/tests/test_*.py

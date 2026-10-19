@@ -9,7 +9,7 @@ import httpx
 import psutil
 import pytest
 
-from strata_server import lifecycle as strata
+from ares import lifecycle as strata
 
 
 def test_server_environment_allows_slow_first_start(monkeypatch):
@@ -65,7 +65,7 @@ def test_start_claim_is_exclusive_and_recoverable(tmp_path):
     assert not lock_file.exists()
 
 
-@pytest.mark.parametrize("entry", ["serve.server", "script", "strata_server.supervisor"])
+@pytest.mark.parametrize("entry", ["serve.server", "script", "ares.supervisor"])
 def test_server_identity_uses_absolute_config_when_windows_denies_cwd(tmp_path, entry):
     class Process:
         def cmdline(self):
@@ -129,7 +129,7 @@ def test_start_passes_the_configured_port_to_strata(tmp_path, monkeypatch):
         strata.main(["start", "--wait", "0"])
     assert commands[0][-2:] == ["--port", "8123"]
     if os.name == "nt":
-        assert "strata_server.supervisor" in commands[0]
+        assert "ares.supervisor" in commands[0]
     else:
         assert commands[0][commands[0].index("--host") + 1] == "127.0.0.1"
 
@@ -139,7 +139,7 @@ def test_detached_service_survives_launchers_job_closing(tmp_path):
     marker = tmp_path / "survived.txt"
     code = """import ctypes, os, subprocess, sys
 from ctypes import wintypes
-from strata_server.windows_memory import WindowsMemoryJob, _ExtendedLimits
+from ares.windows_memory import WindowsMemoryJob, _ExtendedLimits
 job = WindowsMemoryJob(commit_gib=0.25)
 limits = _ExtendedLimits()
 limits.BasicLimitInformation.LimitFlags = 0x2000 | 0x0800

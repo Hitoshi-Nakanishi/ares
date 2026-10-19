@@ -5,7 +5,7 @@ from ctypes import wintypes
 
 import psutil
 
-from strata_server.resources import JOB_COMMIT_GIB
+from ares.resources import JOB_COMMIT_GIB
 
 
 class _BasicLimits(ctypes.Structure):

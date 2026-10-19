@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from strata_server import resources
+from ares import resources
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows commit accounting")

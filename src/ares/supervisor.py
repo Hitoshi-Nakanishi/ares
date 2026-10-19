@@ -9,8 +9,8 @@ from pathlib import Path
 
 import psutil
 
-from strata_server.resources import JOB_COMMIT_GIB, STARTUP_COMMIT_GIB, require_memory_headroom
-from strata_server.windows_memory import WindowsMemoryJob
+from ares.resources import JOB_COMMIT_GIB, STARTUP_COMMIT_GIB, require_memory_headroom
+from ares.windows_memory import WindowsMemoryJob
 
 RAM_LIMIT_GIB = 32
 
