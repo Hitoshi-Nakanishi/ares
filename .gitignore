@@ -1,0 +1,16 @@
+*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/pyproject.toml
+!/src/
+/src/*
+!/src/strata_server/
+/src/strata_server/*
+!/src/strata_server/*.py
+!/tests/
+/tests/*
+!/tests/test_*.py
+!/examples/
+/examples/*
+!/examples/strata.example.json

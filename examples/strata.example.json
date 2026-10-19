@@ -1,0 +1,5 @@
+{
+  "model_name": "your-installed-model",
+  "host": "127.0.0.1",
+  "port": 54321
+}
