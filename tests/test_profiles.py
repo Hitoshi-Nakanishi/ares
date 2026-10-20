@@ -8,7 +8,7 @@ import httpx
 import pytest
 import yaml
 
-from ares import benchmark, manager, runner, supervisor
+from ares import benchmark, lifecycle, manager, runner, supervisor
 from ares.backends import build_spec
 from ares.config import MemoryLimits, load_profile
 
@@ -36,6 +36,34 @@ def profile_file(tmp_path, **changes):
     path = tmp_path / "server.yaml"
     path.write_text(yaml.safe_dump(data))
     return path
+
+
+def test_autostart_without_profile_does_not_launch(monkeypatch, capsys):
+    monkeypatch.delenv("LOCAL_LLM_CONFIG", raising=False)
+    assert lifecycle.main(["autostart"]) == 0
+    assert "no YAML profile" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("reason", ["Insufficient physical RAM", "Insufficient free commit", "Cannot read memory"])
+def test_autostart_skips_memory_failure_without_launch(tmp_path, monkeypatch, capsys, reason):
+    path = profile_file(tmp_path)
+    checks = []
+
+    def insufficient(**kwargs):
+        checks.append(kwargs)
+        raise MemoryError(reason)
+
+    monkeypatch.setattr(manager, "readiness", lambda spec: False)
+    monkeypatch.setattr(manager, "claim_start", lambda path: True)
+    monkeypatch.setattr(manager, "require_memory_headroom", insufficient)
+    monkeypatch.setattr(manager.subprocess, "Popen", lambda *a, **kw: pytest.fail("Memory guard must prevent launch"))
+    assert manager.main(["autostart", "--config", str(path)]) == 0
+    assert checks == [{"available_gib": 64, "commit_gib": 148}]
+    assert "autostart skipped" in capsys.readouterr().out
+    assert not (tmp_path / "state" / "llm-server.pid.json").exists()
+    assert not (tmp_path / "state" / "strata-effective.json").exists()
+    with pytest.raises(SystemExit, match=reason):
+        manager.main(["start", "--config", str(path)])
 
 
 def test_default_backend_and_inactive_environment_are_safe(tmp_path):

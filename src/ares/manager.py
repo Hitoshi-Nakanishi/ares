@@ -76,12 +76,20 @@ def stop(record):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("start", "stop", "restart", "status", "plan"), nargs="?", default="start")
+    parser.add_argument(
+        "action", choices=("start", "autostart", "stop", "restart", "status", "plan"), nargs="?", default="start"
+    )
     parser.add_argument("--config", type=Path, default=os.getenv("LOCAL_LLM_CONFIG"))
     parser.add_argument("--backend", choices=("strata", "vllm", "ollama"))
     parser.add_argument("--wait", type=float, default=7200)
     args = parser.parse_args(argv)
+    autostart = args.action == "autostart"
+    if autostart:
+        args.action = "start"
     if args.config is None:
+        if autostart:
+            print("Ares autostart skipped: no YAML profile configured")
+            return 0
         raise SystemExit("Set LOCAL_LLM_CONFIG or pass --config with a private YAML profile")
     profile = load_profile(args.config, args.backend, resolve_settings=args.action != "stop")
     spec = build_spec(profile) if args.action != "stop" else None
@@ -129,10 +137,16 @@ def main(argv=None):
             print("Local LLM start already in progress")
             return 0
         memory = profile["memory"]
-        require_memory_headroom(
-            available_gib=memory["startup_available_gib"],
-            commit_gib=memory["job_commit_gib"] + memory["free_commit_gib"],
-        )
+        try:
+            require_memory_headroom(
+                available_gib=memory["startup_available_gib"],
+                commit_gib=memory["job_commit_gib"] + memory["free_commit_gib"],
+            )
+        except MemoryError as exc:
+            if autostart:
+                print(f"Ares autostart skipped: {exc}")
+                return 0
+            raise SystemExit(str(exc)) from exc
         spec = build_spec(profile, materialize=True)
         spec_path = state / "llm-launch.json"
         spec_path.write_text(json.dumps(spec), encoding="utf-8")

@@ -50,6 +50,19 @@ Another project can invoke the same interpreter and module with absolute paths a
 its child process. Its application startup can call `start` repeatedly with the same profile without creating duplicate servers.
 Ares itself does not install a Windows boot task or restart after a memory-protection stop.
 
+For host-application startup, use `autostart` after the application's other services are ready:
+
+```powershell
+& $python -m ares autostart --config $config
+```
+
+It uses the same profile and safeguards as `start`. If startup RAM or free commit is insufficient, or memory headroom cannot be
+established, it prints `Ares autostart skipped` and exits successfully without launching inference. Without a YAML profile
+it also skips. An existing ready instance is preserved. It never reduces the configured reserves or retries in a loop;
+configuration and ownership errors still fail. The host application owns any login trigger or later retry. With the example
+profile, a new launch requires 64 GiB available physical RAM and 148 GiB free host commit. After a skip, run `autostart` again
+when other workloads have finished.
+
 The shared native port defaults to 54321. Clients use `http://127.0.0.1:<port>/v1/chat/completions`. Readiness checks are
 specific to each backend and verify the exact model. An Ollama model can be installed without being GPU-loaded: its first
 inference loads it. A ready server alone does not establish inference or persistence. No LAN listener, firewall rule, forwarding

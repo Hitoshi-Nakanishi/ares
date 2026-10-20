@@ -125,7 +125,7 @@ def release_start(lock_file: Path, record: dict[str, float]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if "--config" in argv or os.getenv("LOCAL_LLM_CONFIG"):
+    if "--config" in argv or os.getenv("LOCAL_LLM_CONFIG") or argv[:1] == ["autostart"]:
         from ares.manager import main as managed_main
 
         return managed_main(argv)

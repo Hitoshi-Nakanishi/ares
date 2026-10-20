@@ -57,10 +57,12 @@ HTTPServer(("127.0.0.1", int(os.environ["OLLAMA_HOST"].rsplit(":",1)[1])), Handl
         )
 
     try:
-        started = command("start")
+        started = command("autostart")
         assert started.returncode == 0, started.stderr + started.stdout
         before = json.loads((state / "llm-server.pid.json").read_text())["pid"]
         assert command("status").returncode == 0
+        assert command("autostart").returncode == 0
+        assert json.loads((state / "llm-server.pid.json").read_text())["pid"] == before
         data["memory"]["ram_gib"] = 0.1
         profile.write_text(yaml.safe_dump(data))
         changed = command("start")
