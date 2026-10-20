@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,7 +47,10 @@ def test_autostart_without_profile_does_not_launch(monkeypatch, capsys):
 
 @pytest.mark.parametrize("reason", ["Insufficient physical RAM", "Insufficient free commit", "Cannot read memory"])
 def test_autostart_skips_memory_failure_without_launch(tmp_path, monkeypatch, capsys, reason):
-    path = profile_file(tmp_path)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    path = profile_file(tmp_path, port=port)
     checks = []
 
     def insufficient(**kwargs):
