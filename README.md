@@ -210,4 +210,5 @@ other operating systems. Engine and model licensing remain separate from this la
 
 Only generic source, tests, metadata, documentation and examples belong in Git. The allowlist ignore file excludes private YAML,
 `.env`, weights, logs, environments and build products by default. Review staged files and the complete history before future
-publication; ignoring a file cannot sanitize an already tracked secret. No external remote is configured.
+publication; ignoring a file cannot sanitize an already tracked secret. The shared remote is the private GitHub repository
+`Hitoshi-Nakanishi/ares`. Use ordinary `git push` and `git pull --rebase` on `main` after committing local changes.
