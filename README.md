@@ -194,6 +194,10 @@ memory.
 
 ## Development and distribution
 
+When embedded as a Git submodule, develop in that submodule checkout as the source of truth. Commit Ares changes there
+first, then commit the updated submodule pointer in the parent project. A second working copy is unnecessary. Keep the virtual
+environment inside this checkout; its paths are local and excluded from Git.
+
 ```powershell
 python -m pip install -e '.[dev]'
 python -m pytest
