@@ -65,7 +65,9 @@ def test_start_claim_is_exclusive_and_recoverable(tmp_path):
     assert not lock_file.exists()
 
 
-@pytest.mark.parametrize("entry", ["serve.server", "script", "ares.supervisor", "ares.supervisor"])
+@pytest.mark.parametrize(
+    "entry", ["serve.server", "script", "ares.supervisor", "ares.supervisor", "ares.supervisor"]
+)
 def test_server_identity_uses_absolute_config_when_windows_denies_cwd(tmp_path, entry):
     class Process:
         def cmdline(self):

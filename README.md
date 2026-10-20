@@ -1,6 +1,6 @@
 # Ares
 
-Named for the god of the forge, Ares manages a workstation's GPU inference servers.
+Ares manages a workstation's GPU inference servers.
 
 Local-only launch and memory supervision for **Strata (default)**, **vLLM**, and **Ollama**. This is server management, not an
 agent framework or inference engine. Model weights, credentials, application workflows and databases are excluded. There is no
@@ -17,8 +17,8 @@ python -m venv .venv
 & .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-Run these commands from the Ares checkout in PowerShell. Set `$config` to your private YAML file; its path need not be
-inside this repository. On Linux, use `.venv/bin/python` instead.
+Run these commands from the Ares checkout in PowerShell. Set `$config` to your private YAML file; its path need not be inside
+this repository. On Linux, use `.venv/bin/python` instead.
 
 ```powershell
 $python = ".\.venv\Scripts\python.exe"
@@ -57,8 +57,8 @@ For host-application startup, use `autostart` after the application's other serv
 ```
 
 It uses the same profile and safeguards as `start`. If startup RAM or free commit is insufficient, or memory headroom cannot be
-established, it prints `Ares autostart skipped` and exits successfully without launching inference. Without a YAML profile
-it also skips. An existing ready instance is preserved. It never reduces the configured reserves or retries in a loop;
+established, it prints `Ares autostart skipped` and exits successfully without launching inference. Without a YAML profile it
+also skips. An existing ready instance is preserved. It never reduces the configured reserves or retries in a loop;
 configuration and ownership errors still fail. The host application owns any login trigger or later retry. With the example
 profile, a new launch requires 64 GiB available physical RAM and 148 GiB free host commit. After a skip, run `autostart` again
 when other workloads have finished.
@@ -194,8 +194,8 @@ memory.
 
 ## Development and distribution
 
-When embedded as a Git submodule, develop in that submodule checkout as the source of truth. Commit Ares changes there
-first, then commit the updated submodule pointer in the parent project. A second working copy is unnecessary. Keep the virtual
+When embedded as a Git submodule, develop in that submodule checkout as the source of truth. Commit Ares changes there first,
+then commit the updated submodule pointer in the parent project. A second working copy is unnecessary. Keep the virtual
 environment inside this checkout; its paths are local and excluded from Git.
 
 ```powershell

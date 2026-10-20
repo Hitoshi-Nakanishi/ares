@@ -14,7 +14,7 @@ from ares.backends import build_spec
 from ares.config import MemoryLimits, load_profile
 
 
-@pytest.mark.parametrize("module", ["ares.runner", "ares.runner", "unrelated.runner"])
+@pytest.mark.parametrize("module", ["ares.runner", "ares.runner", "ares.runner", "unrelated.runner"])
 def test_renamed_runner_keeps_verified_ownership(tmp_path, monkeypatch, module):
     spec_path = str((tmp_path / "launch.json").resolve())
     process = SimpleNamespace(create_time=lambda: 123, cmdline=lambda: ["python", "-m", module, spec_path])

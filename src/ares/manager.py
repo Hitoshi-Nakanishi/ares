@@ -26,7 +26,7 @@ def owned_process(record):
         spec_path = str(Path(record["spec_path"]).resolve())
         if (
             abs(process.create_time() - record["created"]) < 1
-            and {"ares.runner", "ares.runner"}.intersection(command)
+            and {"ares.runner", "ares.runner", "ares.runner"}.intersection(command)
             and spec_path in command
         ):
             return process
