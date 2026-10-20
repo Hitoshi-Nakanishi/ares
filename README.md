@@ -9,58 +9,147 @@ already installed GPU Docker image or a native Linux installation.
 
 ## Install and run
 
-Use Python 3.11 or newer. Install the selected engine and model separately. Copy `examples/server.example.yaml` to an ignored
-or external private location. Set its paths and model names, or supply its `${VARIABLE}` values through the environment.
+Use Python 3.11 or newer. Install the selected engine and model separately. Copy `examples/server.example.yaml` to an ignored or
+external private location. Set its paths and model names, or supply its `${VARIABLE}` values through the environment.
 
 ```powershell
-python -m pip install -e .
-python -m ares start --config private/server.yaml
-python -m ares status --config private/server.yaml
-python -m ares stop --config private/server.yaml
+python -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Run these commands from the Ares checkout in PowerShell. Set `$config` to your private YAML file; its path need not be
+inside this repository. On Linux, use `.venv/bin/python` instead.
+
+```powershell
+$python = ".\.venv\Scripts\python.exe"
+$config = "private/server.yaml"
+
+# Start, or return successfully if the same configuration is already ready.
+& $python -m ares start --config $config
+
+# Check the managed process, backend readiness and exact model.
+& $python -m ares status --config $config
+
+# Stop the managed server and its children.
+& $python -m ares stop --config $config
+
+# Stop and start again to apply configuration changes.
+& $python -m ares restart --config $config
+
+# Validate and inspect the launch command without starting or stopping anything.
+& $python -m ares plan --config $config
 ```
 
 Only the selected backend's variables are expanded. `LOCAL_LLM_CONFIG` can supply the profile path. Unknown fields, invalid
 memory values and non-loopback hosts are rejected. `plan` validates and shows a command without starting it; this output may
-contain private local paths. YAML `backend` defaults to `strata`. Change it to `vllm` or `ollama` and run `restart` to switch.
-Starting with changed active settings refuses the change until an explicit restart. One state directory owns one backend at a
-time; use the same directory and port for alternate profiles. `--backend` is an explicit temporary selection and must also be
-supplied to subsequent commands while using that selection.
+contain private local paths. Starting with changed active settings refuses the change until an explicit restart. One state
+directory owns one backend at a time; use the same directory and port for alternate profiles. Before stopping or restarting, let
+application requests finish and pause any application automation that could start the server again.
 
-The shared native port defaults to 54321. Clients use `http://127.0.0.1:<port>/v1/chat/completions`. Readiness checks are specific
-to each backend and verify the exact model. An Ollama model can be installed without being GPU-loaded: its first inference
-loads it. A ready server alone does not establish inference or persistence. No LAN listener, firewall rule, forwarding or
-tunnel is installed.
+Another project can invoke the same interpreter and module with absolute paths and `--config`, or export `LOCAL_LLM_CONFIG` to
+its child process. Its application startup can call `start` repeatedly with the same profile without creating duplicate servers.
+Ares itself does not install a Windows boot task or restart after a memory-protection stop.
+
+The shared native port defaults to 54321. Clients use `http://127.0.0.1:<port>/v1/chat/completions`. Readiness checks are
+specific to each backend and verify the exact model. An Ollama model can be installed without being GPU-loaded: its first
+inference loads it. A ready server alone does not establish inference or persistence. No LAN listener, firewall rule, forwarding
+or tunnel is installed.
 
 ## Backend settings
+
+Edit the top-level `backend` field in the private YAML. Choose exactly one of these values, then run `restart`:
+
+```yaml
+backend: strata
+```
+
+| Value | Required backend configuration |
+| --- | --- |
+| `strata` | `backends.strata.home` and `config`, pointing to the installed native engine and its JSON model configuration |
+| `vllm` | `backends.vllm.image`, `model_path` and `model`, identifying a local Docker image, model directory and API model name |
+| `ollama` | `backends.ollama.executable` and `model`, identifying an installed executable and an already installed model |
+
+For example, replace `backend: strata` with `backend: ollama` and run:
+
+```powershell
+& $python -m ares plan --config $config
+& $python -m ares restart --config $config
+& $python -m ares status --config $config
+```
+
+The selected backend must be fully configured before restarting. The complete layout is in
+[`examples/server.example.yaml`](examples/server.example.yaml). Replace its `${VARIABLE}` placeholders with local values or set
+those environment variables. Switching stops the previous engine first; a failed replacement leaves it stopped, without
+fallback. `--backend` can override the YAML selection for a command, but must also be supplied to subsequent commands while
+using that selection. Server switching does not automatically adapt an application's model name, API extensions or output
+validation; verify those contracts before sending application workloads to another backend.
 
 Strata needs its own native installation and Python environment with `serve.server`. Set `strata.home` and `strata.config` to
 that installation and its private JSON. YAML `options` override resident expert RAM, VRAM reserve, context, resident KV,
 prefill, PLE I/O and CPU sharing. The original JSON is preserved; effective JSON is generated in the private state directory.
-The example uses 8 GiB resident experts, direct PLE reads, no CPU sharing and a 10,000 MiB VRAM reserve. Resident experts are one
-cache budget, not total process RAM. A VRAM reserve does not control GPU compute utilization.
+The example uses 8 GiB resident experts, direct PLE reads, no CPU sharing and a 10,000 MiB VRAM reserve. Resident experts are
+one cache budget, not total process RAM. A VRAM reserve does not control GPU compute utilization.
 
 vLLM Docker mode requires an existing local image and a self-contained local model directory, mounted read-only. Host port
 publishing is loopback-only. Container RAM equals `memory.ram_gib`; equal memory-plus-swap capacity prevents container swap.
-Images are never pulled; model fetching and usage statistics are disabled. Native mode requires Linux. YAML controls GPU
-memory utilization (0.9 by default), context, sequences and CPU offload. Concurrency defaults to one and CPU offload to zero.
-The optional `swap_space_gib` passes the legacy `--swap-space` flag only when explicitly configured; current vLLM versions no
-longer expose that flag, so the default profile omits it. Container OS swap remains disabled independently. See
+Images are never pulled; model fetching and usage statistics are disabled. Native mode requires Linux. YAML controls GPU memory
+utilization (0.9 by default), context, sequences and CPU offload. Concurrency defaults to one and CPU offload to zero. The
+optional `swap_space_gib` passes the legacy `--swap-space` flag only when explicitly configured; current vLLM versions no longer
+expose that flag, so the default profile omits it. Container OS swap remains disabled independently. See
 [vLLM engine arguments](https://docs.vllm.ai/en/latest/configuration/engine_args/).
 
 Ollama runs `ollama serve` with a loopback host, one model, one parallel inference and cloud features disabled. YAML controls
 the installed model, model directory, context and GPU overhead reserve. This reserve is a scheduling hint, not a hard VRAM cap;
-Ollama can offload to RAM when a model does not fit. No model pull is issued. See [Ollama configuration](https://docs.ollama.com/faq)
-and [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility).
+Ollama can offload to RAM when a model does not fit. No model pull is issued. See
+[Ollama configuration](https://docs.ollama.com/faq) for server settings. The
+[OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility) reference describes API support.
 
 ## Memory and lifetime
 
-YAML `memory` controls `ram_gib`, `available_gib`, `startup_available_gib`, `free_commit_gib` and `job_commit_gib`. The Windows
-supervisor starts the selected process suspended, assigns a kill-on-close job, and resumes it. With the example settings,
-children inherit a 100 GiB aggregate **commit** limit, including Windows GPU backing. Commit is not physical RAM. Startup
-requires 64 GiB available physical RAM and 148 GiB free host commit. Every 0.5 seconds the supervisor stops the tree above
-32 GiB physical RAM, below 32 GiB host-available RAM or below 48 GiB free host commit. This is a sampled cutoff, not an
-OS-enforced working-set cap. Defaults target a large-memory workstation and may refuse smaller machines. Linux uses
-process-tree and host physical-RAM monitoring; Windows job commit enforcement is not claimed there.
+Edit the existing top-level `memory` block in the private YAML, then run `plan` and `restart` to apply it. Values are in GiB (1
+GiB = 1,073,741,824 bytes). These are limits and headroom checks, not amounts preallocated at startup.
+
+```yaml
+memory:
+  ram_gib: 32
+  available_gib: 32
+  startup_available_gib: 64
+  free_commit_gib: 48
+  job_commit_gib: 100
+```
+
+| Field | Meaning |
+| --- | --- |
+| `ram_gib` | Stop native inference when aggregate process-tree physical RAM exceeds this value; also the Docker container memory cap |
+| `available_gib` | Stop when the host's available physical RAM falls below this value, preserving room for other applications |
+| `startup_available_gib` | Require at least this much available host physical RAM before starting |
+| `free_commit_gib` | Stop when free host commit falls below this value |
+| `job_commit_gib` | Windows job aggregate commit limit, including GPU backing; separate from physical RAM |
+
+To allow up to 48 GiB of native process-tree RAM, change only `ram_gib: 32` to `ram_gib: 48` in that block. Keep the host
+headroom fields to preserve room for other applications. `startup_available_gib` must be at least `available_gib`, and
+`job_commit_gib` must be at least `ram_gib`. A smaller commit limit can still stop a GPU-heavy model even when its physical RAM
+use is low.
+
+Strata's cache and VRAM settings are separate from the memory protection limits. Edit these fields in the existing
+`backends.strata.options` block:
+
+```yaml
+resident_budget_gib: 8
+vram_reserve_mib: 10000
+```
+
+`resident_budget_gib` budgets the expert cache in RAM, not total application RAM. `vram_reserve_mib` leaves approximately 9.8
+GiB of VRAM headroom; it does not set GPU compute utilization. vLLM uses `backends.vllm.gpu_memory_utilization: 0.9` to budget
+approximately 90% of VRAM. Ollama uses `backends.ollama.vram_reserve_mib` as a scheduling hint. Model fit and measured usage
+still need checking after changes.
+
+The Windows supervisor starts the selected process suspended, assigns a kill-on-close job, and resumes it. With the example
+settings, children inherit a 100 GiB aggregate **commit** limit, including Windows GPU backing. Commit is not physical RAM.
+Startup requires 64 GiB available physical RAM and 148 GiB free host commit (`job_commit_gib + free_commit_gib`). Every 0.5
+seconds the supervisor stops the tree above 32 GiB physical RAM, below 32 GiB host-available RAM or below 48 GiB free host
+commit. This is a sampled cutoff, not an OS-enforced working-set cap. Defaults target a large-memory workstation and may refuse
+smaller machines. Linux uses process-tree and host physical-RAM monitoring; Windows job commit enforcement is not claimed there.
 
 Docker workloads are outside the Windows job: process-tree RSS describes the Docker client, not the VM container. The separate
 container cap and host-available RAM guard apply. Container cleanup verifies an instance ownership label. PID ownership checks
@@ -84,11 +173,11 @@ python -m ares.benchmark --config private/server.yaml --output private/strata.cs
 The benchmark measures only the exact selected, already-running backend and model. It never starts or switches engines. Three
 small instruction, arithmetic and extraction cases record correctness, wall latency, completion tokens and end-to-end output
 tokens per second when supplied. Missing usage stays missing. The rate includes prompt processing, not just decoding. Repeated
-requests can reuse caches; record cold and warm runs separately. These smoke cases do not establish analyst-report quality,
-DB persistence, long-context capacity or sustained throughput. Record hardware, engine version and model/quantization
-provenance alongside any comparison. The CSV saves prompt hashes, not raw prompts or responses. Memory columns report
-host-available physical RAM after each request and the runner's process-tree peak since engine startup; Docker client RSS is
-not container memory.
+requests can reuse caches; record cold and warm runs separately. These smoke cases do not establish analyst-report quality, DB
+persistence, long-context capacity or sustained throughput. Record hardware, engine version and model/quantization provenance
+alongside any comparison. The CSV saves prompt hashes, not raw prompts or responses. Memory columns report host-available
+physical RAM after each request and the runner's process-tree peak since engine startup; Docker client RSS is not container
+memory.
 
 ## Development and distribution
 
