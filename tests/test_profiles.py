@@ -39,6 +39,22 @@ def profile_file(tmp_path, **changes):
     return path
 
 
+@pytest.mark.parametrize("action", ["start", "stop", "restart"])
+def test_lifecycle_claim_precedes_reading_or_stopping_the_saved_server(tmp_path, monkeypatch, action):
+    path = profile_file(tmp_path)
+    state = tmp_path / "state"
+    state.mkdir()
+    pid_file = state / "llm-server.pid.json"
+    original = b"record is being published by the other operation"
+    pid_file.write_bytes(original)
+    monkeypatch.setattr(manager, "claim_start", lambda _: False)
+    monkeypatch.setattr(manager, "stop", lambda _: pytest.fail("A competing operation must not stop the server"))
+    monkeypatch.setattr(manager, "readiness", lambda _: pytest.fail("A competing operation must not probe the server"))
+    with pytest.raises(SystemExit, match="operation already in progress"):
+        manager.main([action, "--config", str(path)])
+    assert pid_file.read_bytes() == original
+
+
 def test_autostart_without_profile_does_not_launch(monkeypatch, capsys):
     monkeypatch.delenv("LOCAL_LLM_CONFIG", raising=False)
     assert lifecycle.main(["autostart"]) == 0

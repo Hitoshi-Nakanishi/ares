@@ -98,6 +98,8 @@ def main(argv=None):
         print(json.dumps(spec, indent=2))
         return 0
     state.mkdir(parents=True, exist_ok=True)
+    if args.action in ("start", "stop", "restart") and not claim_start(state / "llm-server.starting.json"):
+        raise SystemExit("Local LLM lifecycle operation already in progress")
     pid_file = state / "llm-server.pid.json"
     record = json.loads(pid_file.read_text()) if pid_file.exists() else {}
     fingerprint = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
@@ -133,9 +135,6 @@ def main(argv=None):
         with socket.socket() as connection:
             if connection.connect_ex(("127.0.0.1", spec["port"])) == 0:
                 raise SystemExit("The configured port already belongs to another server; stop it explicitly")
-        if not claim_start(state / "llm-server.starting.json"):
-            print("Local LLM start already in progress")
-            return 0
         memory = profile["memory"]
         try:
             require_memory_headroom(
