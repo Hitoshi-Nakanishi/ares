@@ -38,6 +38,8 @@ def build_spec(profile, *, materialize=False):
             if key == "ple_io":
                 if value not in ("direct", "mmap"):
                     raise ValueError("ple_io must be direct or mmap")
+            elif key == "prefill" and value == "auto":
+                pass
             else:
                 number(value, key)
             flag = "--" + key.replace("_", "-")

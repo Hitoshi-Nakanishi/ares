@@ -205,6 +205,20 @@ def test_strata_overrides_are_private_and_preserve_original(tmp_path):
     assert Path(profile["settings"]["config"]).read_bytes() == original
 
 
+@pytest.mark.parametrize("prefill", ["auto", 8192, "invalid", "auto:8192", True, -1])
+def test_strata_prefill_accepts_auto_and_bounded_numbers(tmp_path, prefill):
+    profile = load_profile(profile_file(tmp_path))
+    profile["settings"]["options"]["prefill"] = prefill
+    if prefill == "auto" or type(prefill) is int and prefill >= 0:
+        build_spec(profile, materialize=True)
+        native = json.loads((Path(profile["state_dir"]) / "strata-effective.json").read_text())
+        assert native["args"][native["args"].index("--prefill") + 1] == str(prefill)
+    else:
+        with pytest.raises(ValueError, match="Invalid prefill"):
+            build_spec(profile, materialize=True)
+        assert not (Path(profile["state_dir"]) / "strata-effective.json").exists()
+
+
 def test_vllm_container_is_local_bounded_and_offline(tmp_path):
     profile = {
         "backend": "vllm",

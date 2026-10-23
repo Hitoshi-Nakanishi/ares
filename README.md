@@ -167,6 +167,10 @@ GiB of VRAM headroom; it does not set GPU compute utilization. vLLM uses `backen
 approximately 90% of VRAM. Ollama uses `backends.ollama.vram_reserve_mib` as a scheduling hint. Model fit and measured usage
 still need checking after changes.
 
+Strata `prefill` accepts a numeric chunk size or `auto`. The latter lets the native engine choose a chunk that fits its GPU
+cache and context. Small fixed chunks can repeatedly stream uncached experts from disk. Keep memory protection enabled and
+verify representative requests and production health after changing this setting; selecting `auto` does not prove throughput.
+
 The Windows supervisor starts the selected process suspended, assigns a kill-on-close job, and resumes it. With the example
 settings, children inherit a 100 GiB aggregate **commit** limit, including Windows GPU backing. Commit is not physical RAM.
 Startup requires 64 GiB available physical RAM and 148 GiB free host commit (`job_commit_gib + free_commit_gib`). Every 0.5
