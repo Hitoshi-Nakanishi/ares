@@ -58,7 +58,10 @@ def test_operator_pause_blocks_automatic_and_regular_starts(tmp_path, monkeypatc
 def test_resume_keeps_pause_when_host_headroom_is_insufficient(tmp_path, monkeypatch):
     from ares.inhibition import inhibit
 
-    path = profile_file(tmp_path)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    path = profile_file(tmp_path, port=port)
     inhibit(tmp_path / "state", "operator pause")
     monkeypatch.setattr(manager, "claim_start", lambda _: True)
     monkeypatch.setattr(manager, "readiness", lambda _: False)
@@ -75,6 +78,41 @@ def test_resume_keeps_pause_when_host_headroom_is_insufficient(tmp_path, monkeyp
 def test_autostart_cannot_clear_an_operator_pause(tmp_path):
     with pytest.raises(SystemExit):
         manager.main(["autostart", "--resume", "--config", str(profile_file(tmp_path))])
+
+
+def test_resume_launch_failure_restores_the_pause(tmp_path, monkeypatch):
+    from ares.inhibition import inhibit
+
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    path = profile_file(tmp_path, port=port)
+    state = tmp_path / "state"
+    inhibit(state, "operator pause")
+    monkeypatch.setattr(manager, "claim_start", lambda _: True)
+    monkeypatch.setattr(manager, "readiness", lambda _: False)
+    monkeypatch.setattr(manager, "require_memory_headroom", lambda **kwargs: None)
+
+    def failed(*args, **kwargs):
+        raise OSError("launch unavailable")
+
+    monkeypatch.setattr(manager.subprocess, "Popen", failed)
+    with pytest.raises(OSError, match="launch unavailable"):
+        manager.main(["start", "--resume", "--config", str(path)])
+    assert "launch failed" in json.loads((state / "llm-paused.json").read_text())["reason"]
+
+
+def test_unexpected_runner_exit_inhibits_autostart(tmp_path, monkeypatch):
+    path = profile_file(tmp_path)
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "llm-server.pid.json").write_text(json.dumps({"pid": 12345}))
+    monkeypatch.setattr(manager, "claim_start", lambda _: True)
+    monkeypatch.setattr(manager, "owned_process", lambda _: None)
+    monkeypatch.setattr(manager.psutil, "pid_exists", lambda _: False)
+    monkeypatch.setattr(manager, "readiness", lambda _: pytest.fail("Must not retry a dead runner automatically"))
+    assert manager.main(["autostart", "--config", str(path)]) == 0
+    assert "exited" in json.loads((state / "llm-paused.json").read_text())["reason"]
 
 
 @pytest.mark.parametrize("action", ["start", "stop", "restart"])
