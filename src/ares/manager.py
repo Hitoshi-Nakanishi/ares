@@ -14,6 +14,7 @@ import psutil
 
 from ares.backends import build_spec
 from ares.config import load_profile
+from ares.inhibition import inhibit
 from ares.lifecycle import claim_start, server_environment, wait_for_exit
 from ares.resources import require_memory_headroom
 from ares.runner import stop_container
@@ -82,7 +83,12 @@ def main(argv=None):
     parser.add_argument("--config", type=Path, default=os.getenv("LOCAL_LLM_CONFIG"))
     parser.add_argument("--backend", choices=("strata", "vllm", "ollama"))
     parser.add_argument("--wait", type=float, default=7200)
+    parser.add_argument(
+        "--resume", action="store_true", help="Explicitly clear an operator or safety stop before starting"
+    )
     args = parser.parse_args(argv)
+    if args.resume and args.action not in {"start", "restart"}:
+        parser.error("--resume requires explicit start or restart")
     autostart = args.action == "autostart"
     if autostart:
         args.action = "start"
@@ -104,6 +110,17 @@ def main(argv=None):
     record = json.loads(pid_file.read_text()) if pid_file.exists() else {}
     fingerprint = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
     process = owned_process(record) if record else None
+    pause = state / "llm-paused.json"
+    if args.action == "stop":
+        inhibit(state, "Operator stopped inference; explicit start --resume required")
+    if args.action in {"start", "restart"}:
+        if record and process is None and not psutil.pid_exists(record.get("pid", -1)) and not pause.exists():
+            inhibit(state, "Managed inference exited; inspect logs before explicit start --resume")
+        if pause.exists() and not args.resume:
+            if autostart:
+                print(f"Ares autostart skipped: inference is paused ({pause})")
+                return 0
+            raise SystemExit(f"Inference is paused; inspect {pause} and use start --resume explicitly")
     if args.action in ("stop", "restart"):
         stop(record)
         pid_file.unlink(missing_ok=True)
@@ -124,7 +141,16 @@ def main(argv=None):
     except (httpx.HTTPError, ValueError, KeyError):
         ready = False
     if args.action == "status":
-        print(json.dumps({"backend": spec["backend"], "model": spec["model"], "ready": bool(process and ready)}))
+        print(
+            json.dumps(
+                {
+                    "backend": spec["backend"],
+                    "model": spec["model"],
+                    "ready": bool(process and ready),
+                    "paused": pause.exists(),
+                }
+            )
+        )
         return 0 if process and ready else 1
     if process and ready:
         print(f"Local LLM ready: {spec['backend']} http://127.0.0.1:{spec['port']}/v1 model={spec['model']}")
@@ -150,22 +176,28 @@ def main(argv=None):
         spec_path = state / "llm-launch.json"
         spec_path.write_text(json.dumps(spec), encoding="utf-8")
         with (state / "llm-server.out.log").open("a", encoding="utf-8") as stream:
-            child = subprocess.Popen(
-                [sys.executable, "-u", "-m", "ares.runner", str(spec_path)],
-                env=server_environment(),
-                cwd=state,
-                stdin=subprocess.DEVNULL,
-                stdout=stream,
-                stderr=subprocess.STDOUT,
-                creationflags=(
-                    subprocess.DETACHED_PROCESS
-                    | subprocess.CREATE_NEW_PROCESS_GROUP
-                    | subprocess.CREATE_BREAKAWAY_FROM_JOB
+            if args.resume:
+                pause.unlink(missing_ok=True)
+            try:
+                child = subprocess.Popen(
+                    [sys.executable, "-u", "-m", "ares.runner", str(spec_path)],
+                    env=server_environment(),
+                    cwd=state,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stream,
+                    stderr=subprocess.STDOUT,
+                    creationflags=(
+                        subprocess.DETACHED_PROCESS
+                        | subprocess.CREATE_NEW_PROCESS_GROUP
+                        | subprocess.CREATE_BREAKAWAY_FROM_JOB
+                    )
+                    if os.name == "nt"
+                    else 0,
+                    start_new_session=os.name != "nt",
                 )
-                if os.name == "nt"
-                else 0,
-                start_new_session=os.name != "nt",
-            )
+            except OSError:
+                inhibit(state, "Inference launch failed; inspect logs before explicit start --resume")
+                raise
         process = psutil.Process(child.pid)
         record = {
             "pid": child.pid,

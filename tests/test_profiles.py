@@ -39,6 +39,44 @@ def profile_file(tmp_path, **changes):
     return path
 
 
+@pytest.mark.parametrize("action", ["start", "restart", "autostart"])
+def test_operator_pause_blocks_automatic_and_regular_starts(tmp_path, monkeypatch, action):
+    from ares.inhibition import inhibit
+
+    path = profile_file(tmp_path)
+    inhibit(tmp_path / "state", "operator pause")
+    monkeypatch.setattr(manager, "claim_start", lambda _: True)
+    monkeypatch.setattr(manager, "readiness", lambda _: pytest.fail("Paused inference must not probe or launch"))
+    if action == "autostart":
+        assert manager.main([action, "--config", str(path)]) == 0
+    else:
+        with pytest.raises(SystemExit, match="paused"):
+            manager.main([action, "--config", str(path)])
+    assert (tmp_path / "state/llm-paused.json").exists()
+
+
+def test_resume_keeps_pause_when_host_headroom_is_insufficient(tmp_path, monkeypatch):
+    from ares.inhibition import inhibit
+
+    path = profile_file(tmp_path)
+    inhibit(tmp_path / "state", "operator pause")
+    monkeypatch.setattr(manager, "claim_start", lambda _: True)
+    monkeypatch.setattr(manager, "readiness", lambda _: False)
+
+    def insufficient(**kwargs):
+        raise MemoryError("protected reserve")
+
+    monkeypatch.setattr(manager, "require_memory_headroom", insufficient)
+    with pytest.raises(SystemExit, match="protected reserve"):
+        manager.main(["start", "--resume", "--config", str(path)])
+    assert (tmp_path / "state/llm-paused.json").exists()
+
+
+def test_autostart_cannot_clear_an_operator_pause(tmp_path):
+    with pytest.raises(SystemExit):
+        manager.main(["autostart", "--resume", "--config", str(profile_file(tmp_path))])
+
+
 @pytest.mark.parametrize("action", ["start", "stop", "restart"])
 def test_lifecycle_claim_precedes_reading_or_stopping_the_saved_server(tmp_path, monkeypatch, action):
     path = profile_file(tmp_path)

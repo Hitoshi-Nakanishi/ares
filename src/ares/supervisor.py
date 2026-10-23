@@ -10,6 +10,7 @@ from pathlib import Path
 import psutil
 
 from ares.config import MemoryLimits
+from ares.inhibition import inhibit
 from ares.resources import require_memory_headroom
 from ares.windows_memory import WindowsMemoryJob
 
@@ -50,16 +51,17 @@ def save_snapshot(record, snapshot):
 
 def supervise(command, cwd, record, *, limits=None, environment=None, label="Strata"):
     limits = limits or MemoryLimits()
-    require_memory_headroom(
-        available_gib=limits.startup_available_gib, commit_gib=limits.job_commit_gib + limits.free_commit_gib
-    )
-    job = WindowsMemoryJob(commit_gib=limits.job_commit_gib) if os.name == "nt" else None
+    job = None
     child = None
     snapshot = {"status": "starting", "ram_limit_gib": limits.ram_gib, "job_commit_limit_gib": limits.job_commit_gib}
     peak_rss = peak_commit = 0
     last_snapshot_warning = float("-inf")
     result = 1
     try:
+        require_memory_headroom(
+            available_gib=limits.startup_available_gib, commit_gib=limits.job_commit_gib + limits.free_commit_gib
+        )
+        job = WindowsMemoryJob(commit_gib=limits.job_commit_gib) if os.name == "nt" else None
         child = subprocess.Popen(
             command,
             cwd=cwd,
@@ -90,6 +92,11 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
         snapshot.update(status="stopped", error=str(exc))
         print(f"{label} supervisor stopped inference: {exc}", flush=True)
     finally:
+        if result != 0:
+            try:
+                inhibit(record.parent, snapshot.get("error", f"Inference exited with code {result}"))
+            except OSError as exc:
+                print(f"{label} safety stop could not be persisted: {exc}", flush=True)
         if job is not None:
             job.close()
         if child is not None:

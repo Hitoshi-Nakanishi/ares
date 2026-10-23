@@ -36,6 +36,9 @@ $config = "private/server.yaml"
 # Stop and start again to apply configuration changes.
 & $python -m ares restart --config $config
 
+# Explicitly resume after an operator stop or a safety trip.
+& $python -m ares start --resume --config $config
+
 # Validate and inspect the launch command without starting or stopping anything.
 & $python -m ares plan --config $config
 ```
@@ -49,6 +52,13 @@ application requests finish and pause any application automation that could star
 Another project can invoke the same interpreter and module with absolute paths and `--config`, or export `LOCAL_LLM_CONFIG` to
 its child process. Its application startup can call `start` repeatedly with the same profile without creating duplicate servers.
 Ares itself does not install a Windows boot task or restart after a memory-protection stop.
+
+`stop`, a supervised failure, or an unexpected exit of a recorded runner inhibits subsequent starts using
+`llm-paused.json` in the selected state directory. Ordinary `start` and `restart` refuse; `autostart` skips. Inspect the reason
+and host health before explicitly using `start --resume` or `restart --resume`. An automatic invocation cannot use `--resume`.
+The startup memory checks still apply, and an insufficient reserve leaves the pause intact. Resuming does not authorize an
+application to resume its report queue or periodic maintenance. The Windows job enforces below-normal CPU priority throughout
+the native process tree in addition to its aggregate committed-memory limit; RSS remains a separately sampled cutoff.
 
 For host-application startup, use `autostart` after the application's other services are ready:
 

@@ -71,7 +71,8 @@ class WindowsMemoryJob:
             raise ctypes.WinError(ctypes.get_last_error())
         limits = _ExtendedLimits()
         # WDDM GPU backing also consumes commit; physical RAM is monitored separately.
-        limits.BasicLimitInformation.LimitFlags = 0x00000200 | 0x00002000
+        limits.BasicLimitInformation.LimitFlags = 0x00000200 | 0x00002000 | 0x00000020
+        limits.BasicLimitInformation.PriorityClass = 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
         limits.JobMemoryLimit = int(commit_gib * 2**30)
         if not self.api.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
             error = ctypes.WinError(ctypes.get_last_error())

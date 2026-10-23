@@ -109,7 +109,7 @@ def test_job_rejects_excess_allocation_and_cleans_up_child():
         [
             sys.executable,
             "-c",
-            "try:\n x=bytearray(256*1024**2)\nexcept MemoryError:\n print('bounded')\nelse:\n raise SystemExit('memory limit missing')",
+            "import psutil\nprint(int(psutil.Process().nice()))\ntry:\n x=bytearray(256*1024**2)\nexcept MemoryError:\n print('bounded')\nelse:\n raise SystemExit('memory limit missing')",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -119,7 +119,7 @@ def test_job_rejects_excess_allocation_and_cleans_up_child():
         job.resume(child)
         output, error = child.communicate(timeout=20)
         assert child.returncode == 0, error
-        assert output.strip() == b"bounded"
+        assert output.splitlines() == [b"16384", b"bounded"]
     finally:
         job.close()
         if child.poll() is None:
@@ -158,3 +158,17 @@ def test_supervisor_stops_tree_at_physical_ram_cutoff(tmp_path, monkeypatch):
     assert "physical RAM exceeded 32 GiB" in state["error"]
     assert closed == [True]
     assert child.returncode == 1
+    pause = json.loads((tmp_path / "llm-paused.json").read_text())
+    assert "physical RAM exceeded" in pause["reason"]
+
+
+def test_startup_memory_failure_is_recorded_and_inhibits_retry(tmp_path, monkeypatch):
+    def insufficient(**kwargs):
+        raise MemoryError("protected host reserve")
+
+    monkeypatch.setattr(supervisor, "require_memory_headroom", insufficient)
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *a, **kw: pytest.fail("Must not launch"))
+    record = tmp_path / "llm-memory.json"
+    assert supervisor.supervise([], tmp_path, record) == 1
+    assert json.loads(record.read_text())["status"] == "stopped"
+    assert json.loads((tmp_path / "llm-paused.json").read_text())["reason"] == "protected host reserve"
