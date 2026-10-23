@@ -55,7 +55,7 @@ Ares itself does not install a Windows boot task or restart after a memory-prote
 
 `stop`, a supervised failure, or an unexpected exit of a recorded runner inhibits subsequent starts using
 `llm-paused.json` in the selected state directory. Ordinary `start` and `restart` refuse; `autostart` skips. Inspect the reason
-and host health before explicitly using `start --resume` or `restart --resume`. An automatic invocation cannot use `--resume`.
+and host health before explicitly using `start --resume` or `restart --resume`. `autostart` rejects `--resume`.
 The startup memory checks still apply, and an insufficient reserve leaves the pause intact. Resuming does not authorize an
 application to resume its report queue or periodic maintenance. The Windows job enforces below-normal CPU priority throughout
 the native process tree in addition to its aggregate committed-memory limit; RSS remains a separately sampled cutoff.
