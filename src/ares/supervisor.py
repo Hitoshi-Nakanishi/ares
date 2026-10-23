@@ -80,7 +80,9 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
             snapshot.update(usage, status="running", updated_at=time.time(), peak_rss=peak_rss, peak_commit=peak_commit)
             if usage["rss"] > limits.ram_gib * 2**30:
                 raise MemoryError(f"{label} physical RAM exceeded {limits.ram_gib} GiB")
-            require_memory_headroom(available_gib=limits.available_gib, commit_gib=limits.free_commit_gib)
+            snapshot["host_memory"] = require_memory_headroom(
+                available_gib=limits.available_gib, commit_gib=limits.free_commit_gib
+            )
             if not save_snapshot(record, snapshot) and time.monotonic() - last_snapshot_warning >= 30:
                 print(f"{label} memory snapshot unavailable; live memory limits remain active", flush=True)
                 last_snapshot_warning = time.monotonic()

@@ -19,7 +19,10 @@ def test_startup_reserves_physical_and_commit_headroom(monkeypatch, ram, commit,
     monkeypatch.setattr(resources.ctypes.windll.psapi, "GetPerformanceInfo", information)
     monkeypatch.setattr(resources.psutil, "virtual_memory", lambda: SimpleNamespace(available=ram * 2**30))
     if allowed:
-        resources.require_memory_headroom(available_gib=64, commit_gib=160)
+        assert resources.require_memory_headroom(available_gib=64, commit_gib=160) == {
+            "available_gib": ram,
+            "free_commit_gib": commit,
+        }
     else:
         with pytest.raises(MemoryError, match="protect other applications"):
             resources.require_memory_headroom(available_gib=64, commit_gib=160)
