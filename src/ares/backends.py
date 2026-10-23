@@ -26,7 +26,16 @@ def build_spec(profile, *, materialize=False):
         native = json.loads(native_path.read_text(encoding="utf-8-sig"))
         options = checked(
             settings.get("options", {}),
-            ("resident_budget_gib", "vram_reserve_mib", "max_context", "kv_resident", "prefill", "ple_io", "cpu_share"),
+            (
+                "resident_budget_gib",
+                "vram_reserve_mib",
+                "max_context",
+                "kv_resident",
+                "prefill",
+                "expert_cache",
+                "ple_io",
+                "cpu_share",
+            ),
             "strata.options",
         )
         arguments = list(native["args"])
@@ -38,10 +47,12 @@ def build_spec(profile, *, materialize=False):
             if key == "ple_io":
                 if value not in ("direct", "mmap"):
                     raise ValueError("ple_io must be direct or mmap")
-            elif key == "prefill" and value == "auto":
+            elif key in ("prefill", "expert_cache") and value == "auto":
                 pass
             else:
                 number(value, key)
+                if key == "expert_cache" and not isinstance(value, int):
+                    raise ValueError("Invalid expert_cache")
             flag = "--" + key.replace("_", "-")
             if flag in arguments:
                 index = arguments.index(flag)

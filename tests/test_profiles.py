@@ -219,6 +219,20 @@ def test_strata_prefill_accepts_auto_and_bounded_numbers(tmp_path, prefill):
         assert not (Path(profile["state_dir"]) / "strata-effective.json").exists()
 
 
+@pytest.mark.parametrize("cache", [14336, "auto", 1.5, True, -1, "unlimited"])
+def test_strata_gpu_cache_accepts_auto_or_bounded_integers(tmp_path, cache):
+    profile = load_profile(profile_file(tmp_path))
+    profile["settings"]["options"]["expert_cache"] = cache
+    if cache == "auto" or type(cache) is int and cache >= 0:
+        build_spec(profile, materialize=True)
+        native = json.loads((Path(profile["state_dir"]) / "strata-effective.json").read_text())
+        assert native["args"][native["args"].index("--expert-cache") + 1] == str(cache)
+    else:
+        with pytest.raises(ValueError, match="Invalid expert_cache"):
+            build_spec(profile, materialize=True)
+        assert not (Path(profile["state_dir"]) / "strata-effective.json").exists()
+
+
 def test_vllm_container_is_local_bounded_and_offline(tmp_path):
     profile = {
         "backend": "vllm",

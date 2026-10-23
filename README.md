@@ -171,6 +171,11 @@ Strata `prefill` accepts a numeric chunk size or `auto`. The latter lets the nat
 cache and context. Small fixed chunks can repeatedly stream uncached experts from disk. Keep memory protection enabled and
 verify representative requests and production health after changing this setting; selecting `auto` does not prove throughput.
 
+`expert_cache` accepts an integer expert-blob budget or `auto`. It controls GPU caching separately from
+`resident_budget_gib`, which controls RAM caching. On Windows, GPU allocations also consume job commit: calculate that limit
+from measured allocation and host free commit before increasing this cache. Keep the physical-RAM cutoff and host reserves
+enabled; a larger GPU cache does not authorize consuming that much physical RAM.
+
 The Windows supervisor starts the selected process suspended, assigns a kill-on-close job, and resumes it. With the example
 settings, children inherit a 100 GiB aggregate **commit** limit, including Windows GPU backing. Commit is not physical RAM.
 Startup requires 64 GiB available physical RAM and 148 GiB free host commit (`job_commit_gib + free_commit_gib`). Every 0.5
