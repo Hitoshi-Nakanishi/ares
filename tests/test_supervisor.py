@@ -10,7 +10,42 @@ import psutil
 import pytest
 
 from ares import supervisor
+from ares.config import MemoryLimits
 from ares.windows_memory import WindowsMemoryJob
+
+
+@pytest.mark.parametrize("exit_code", [0, 3])
+def test_disabled_runtime_limits_wait_without_monitoring_or_inhibiting(tmp_path, monkeypatch, exit_code):
+    class Child:
+        pid = 10
+
+        def wait(self, timeout=None):
+            return exit_code
+
+        def poll(self):
+            return exit_code
+
+        def kill(self):
+            pytest.fail("Runtime monitoring is disabled")
+
+    checks = []
+
+    def start(command, **kwargs):
+        assert kwargs["creationflags"] == 0
+        return Child()
+
+    monkeypatch.setattr(supervisor, "require_memory_headroom", lambda **kw: checks.append(kw))
+    monkeypatch.setattr(supervisor, "WindowsMemoryJob", lambda **kw: pytest.fail("No runtime job memory limit"))
+    monkeypatch.setattr(supervisor, "memory_snapshot", lambda *a: pytest.fail("No memory polling"))
+    monkeypatch.setattr(supervisor.subprocess, "Popen", start)
+    record = tmp_path / "memory.json"
+    assert supervisor.supervise([], tmp_path, record, limits=MemoryLimits(enforce_runtime=False)) == exit_code
+    assert checks == [{"available_gib": 64, "commit_gib": 148}]
+    state = json.loads(record.read_text())
+    assert state["enforce_runtime"] is False
+    assert state["job_commit_limit_gib"] is None
+    assert state["exit_code"] == exit_code
+    assert not (tmp_path / "llm-paused.json").exists()
 
 
 def test_memory_snapshot_separates_physical_ram_and_commit():

@@ -39,6 +39,31 @@ def profile_file(tmp_path, **changes):
     return path
 
 
+@pytest.mark.parametrize("value", ["false", 0, None])
+def test_runtime_enforcement_requires_an_explicit_boolean(value):
+    with pytest.raises(ValueError, match="enforce_runtime"):
+        MemoryLimits(enforce_runtime=value)
+
+
+def test_disabled_runtime_limits_allow_recovery_of_an_exited_runner(tmp_path, monkeypatch):
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    path = profile_file(tmp_path, memory={"enforce_runtime": False}, port=port)
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "llm-server.pid.json").write_text(json.dumps({"pid": 12345}))
+    monkeypatch.setattr(manager, "claim_start", lambda _: True)
+    monkeypatch.setattr(manager, "owned_process", lambda _: None)
+    monkeypatch.setattr(manager.psutil, "pid_exists", lambda _: False)
+    monkeypatch.setattr(manager, "readiness", lambda _: True)
+    monkeypatch.setattr(manager, "require_memory_headroom", lambda **kw: None)
+    monkeypatch.setattr(manager.subprocess, "Popen", lambda *a, **kw: SimpleNamespace(pid=6789))
+    monkeypatch.setattr(manager.psutil, "Process", lambda _: SimpleNamespace(create_time=lambda: 123, is_running=lambda: True))
+    assert manager.main(["autostart", "--config", str(path)]) == 0
+    assert not (state / "llm-paused.json").exists()
+
+
 @pytest.mark.parametrize("action", ["start", "restart", "autostart"])
 def test_operator_pause_blocks_automatic_and_regular_starts(tmp_path, monkeypatch, action):
     from ares.inhibition import inhibit

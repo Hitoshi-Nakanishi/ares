@@ -53,7 +53,12 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
     limits = limits or MemoryLimits()
     job = None
     child = None
-    snapshot = {"status": "starting", "ram_limit_gib": limits.ram_gib, "job_commit_limit_gib": limits.job_commit_gib}
+    snapshot = {
+        "status": "starting",
+        "enforce_runtime": limits.enforce_runtime,
+        "ram_limit_gib": limits.ram_gib if limits.enforce_runtime else None,
+        "job_commit_limit_gib": limits.job_commit_gib if limits.enforce_runtime else None,
+    }
     peak_rss = peak_commit = 0
     last_snapshot_warning = float("-inf")
     result = 1
@@ -61,17 +66,23 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
         require_memory_headroom(
             available_gib=limits.startup_available_gib, commit_gib=limits.job_commit_gib + limits.free_commit_gib
         )
-        job = WindowsMemoryJob(commit_gib=limits.job_commit_gib) if os.name == "nt" else None
+        job = WindowsMemoryJob(commit_gib=limits.job_commit_gib) if os.name == "nt" and limits.enforce_runtime else None
         child = subprocess.Popen(
             command,
             cwd=cwd,
             env=environment,
             stdin=subprocess.DEVNULL,
-            creationflags=0x00000004 if os.name == "nt" else 0,
+            creationflags=0x00000004 if job is not None else 0,
             start_new_session=os.name != "nt",
         )
         if job is not None:
             job.resume(child)
+        if not limits.enforce_runtime:
+            snapshot.update(status="running", pid=child.pid, updated_at=time.time())
+            save_snapshot(record, snapshot)
+            result = child.wait()
+            snapshot.update(status="exited", exit_code=result)
+            return result
         process = psutil.Process(child.pid)
         while child.poll() is None:
             usage = memory_snapshot(process)
@@ -94,7 +105,7 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
         snapshot.update(status="stopped", error=str(exc))
         print(f"{label} supervisor stopped inference: {exc}", flush=True)
     finally:
-        if result != 0:
+        if result != 0 and (limits.enforce_runtime or child is None):
             try:
                 inhibit(record.parent, snapshot.get("error", f"Inference exited with code {result}"))
             except OSError as exc:

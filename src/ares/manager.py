@@ -114,7 +114,13 @@ def main(argv=None):
     if args.action == "stop":
         inhibit(state, "Operator stopped inference; explicit start --resume required")
     if args.action in {"start", "restart"}:
-        if record and process is None and not psutil.pid_exists(record.get("pid", -1)) and not pause.exists():
+        if (
+            profile["memory"]["enforce_runtime"]
+            and record
+            and process is None
+            and not psutil.pid_exists(record.get("pid", -1))
+            and not pause.exists()
+        ):
             inhibit(state, "Managed inference exited; inspect logs before explicit start --resume")
         if pause.exists() and not args.resume:
             if autostart:

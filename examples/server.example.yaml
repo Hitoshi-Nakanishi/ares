@@ -4,6 +4,7 @@ host: 127.0.0.1
 port: 54321
 state_dir: .local
 memory:
+  enforce_runtime: true
   ram_gib: 32
   available_gib: 32
   startup_available_gib: 64

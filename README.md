@@ -129,6 +129,13 @@ Ollama can offload to RAM when a model does not fit. No model pull is issued. Se
 
 ## Memory and lifetime
 
+Set `memory.enforce_runtime: false` to give an admitted native service continuous availability without automatic memory
+stops. Startup still checks the configured host RAM and commit headroom. The detached runner then waits for the server;
+it does not poll memory, install a Windows job commit limit, or latch an unexpected exit as a safety pause. Explicit
+operator stops still require `--resume`. The application owns recovery and must budget lower-priority workloads separately.
+The remaining memory fields describe startup admission when runtime enforcement is disabled, not reserved or enforced RAM.
+Docker backend container limits are independent and still apply.
+
 Edit the existing top-level `memory` block in the private YAML, then run `plan` and `restart` to apply it. Values are in GiB (1
 GiB = 1,073,741,824 bytes). These are limits and headroom checks, not amounts preallocated at startup.
 

@@ -11,6 +11,7 @@ import yaml
 
 @dataclass(frozen=True)
 class MemoryLimits:
+    enforce_runtime: bool = True
     ram_gib: float = 32
     available_gib: float = 32
     startup_available_gib: float = 64
@@ -18,7 +19,11 @@ class MemoryLimits:
     job_commit_gib: float = 100
 
     def __post_init__(self):
+        if not isinstance(self.enforce_runtime, bool):
+            raise ValueError("memory.enforce_runtime must be a boolean")
         for name, value in asdict(self).items():
+            if name == "enforce_runtime":
+                continue
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError(f"memory.{name} must be a positive finite number")
         if self.startup_available_gib < self.available_gib or self.job_commit_gib < self.ram_gib:
