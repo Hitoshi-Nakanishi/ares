@@ -389,6 +389,7 @@ def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
         "model": "local-model",
         "gpu_memory_utilization": 0.975,
         "shm_size_gib": 16,
+        "image_command": ["vllm", "serve"],
         "env": {"VLLM_PLE_TABLE_MEMORY": "disk", "VLLM_PLE_CPU_OFFLOAD": 1},
         "args": ["--kv-cache-dtype", "fp8", "--speculative-config", '{"method":"mtp","num_speculative_tokens":3}'],
     }
@@ -401,8 +402,9 @@ def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
     }
     command = build_spec(profile)["command"]
     assert "type=volume,source=model-cache,target=/models,readonly" in command
+    assert command[command.index("local-image:installed") + 1 : command.index("--model")] == ["vllm", "serve"]
     assert command[command.index("--model") + 1] == "/models/models/local-model"
-    assert "--shm-size=16g" in command
+    assert "--shm-size=16g" in command and "--security-opt" not in command
     assert "VLLM_PLE_TABLE_MEMORY=disk" in command and "VLLM_PLE_CPU_OFFLOAD=1" in command
     assert "HF_HUB_OFFLINE=1" in command
     assert command[command.index("--gpu-memory-utilization") + 1] == "0.975"
@@ -416,6 +418,32 @@ def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
         {"args": ["--max-model-len=4096"]},
         {"env": {"lower": "x"}},
         {"env": {"FLAG": True}},
+        {"image_command": "vllm serve"},
     ):
         with pytest.raises(ValueError):
             build_spec({**profile, "settings": {**settings, **invalid}})
+
+
+def test_vllm_seccomp_profile_allows_io_uring_but_keeps_docker_blocks(tmp_path):
+    example = Path(__file__).parents[1] / "examples" / "seccomp-io-uring.json"
+    profile = {
+        "backend": "vllm",
+        "port": 54321,
+        "state_dir": str(tmp_path),
+        "memory": asdict(MemoryLimits()),
+        "settings": {
+            "image": "local-image:installed",
+            "volume": "model-cache",
+            "model_path": "local-model",
+            "model": "local-model",
+            "seccomp_profile": str(example),
+        },
+    }
+    command = build_spec(profile)["command"]
+    assert command[command.index("--security-opt") + 1] == f"seccomp={example.resolve()}"
+    rules = json.loads(example.read_text(encoding="utf-8"))
+    blocked = {name for rule in rules["syscalls"] if "args" not in rule for name in rule["names"]}
+    assert {"mount", "ptrace", "unshare", "setns", "keyctl", "bpf"} <= blocked
+    assert not any(name.startswith("io_uring") for name in blocked)
+    with pytest.raises(ValueError):
+        build_spec({**profile, "settings": {**profile["settings"], "seccomp_profile": str(tmp_path / "missing.json")}})

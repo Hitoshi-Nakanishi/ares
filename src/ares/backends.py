@@ -91,6 +91,7 @@ def build_spec(profile, *, materialize=False):
                 "mode",
                 "executable",
                 "image",
+                "image_command",
                 "volume",
                 "model_path",
                 "model",
@@ -100,6 +101,7 @@ def build_spec(profile, *, materialize=False):
                 "cpu_offload_gb",
                 "swap_space_gib",
                 "shm_size_gib",
+                "seccomp_profile",
                 "env",
                 "args",
             ),
@@ -116,7 +118,10 @@ def build_spec(profile, *, materialize=False):
                 or ".." in inside.parts
             ):
                 raise ValueError("vllm.volume needs docker mode and a relative model_path inside the volume")
-            mount, container_model = f"type=volume,source={settings['volume']},target=/models,readonly", f"/models/{inside}"
+            mount, container_model = (
+                f"type=volume,source={settings['volume']},target=/models,readonly",
+                f"/models/{inside}",
+            )
         else:
             model_path = Path(settings["model_path"]).resolve()
             if not model_path.is_dir():
@@ -124,7 +129,9 @@ def build_spec(profile, *, materialize=False):
             mount, container_model = f"type=bind,source={model_path},target=/model,readonly", "/model"
         extra_env = settings.get("env", {})
         if not isinstance(extra_env, dict) or not all(
-            re.fullmatch(r"[A-Z_][A-Z0-9_]*", str(name)) and isinstance(value, (str, int, float)) and not isinstance(value, bool)
+            re.fullmatch(r"[A-Z_][A-Z0-9_]*", str(name))
+            and isinstance(value, (str, int, float))
+            and not isinstance(value, bool)
             for name, value in extra_env.items()
         ):
             raise ValueError("vllm.env must map upper-case variable names to values")
@@ -140,8 +147,10 @@ def build_spec(profile, *, materialize=False):
             "--cpu-offload-gb",
             "--swap-space",
         }
-        if not isinstance(extra_args, list) or not all(isinstance(item, str) for item in extra_args):
-            raise ValueError("vllm.args must be a list of strings")
+        image_command = settings.get("image_command", [])
+        for name, items in (("args", extra_args), ("image_command", image_command)):
+            if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
+                raise ValueError(f"vllm.{name} must be a list of strings")
         if managed.intersection(item.split("=", 1)[0] for item in extra_args):
             raise ValueError("vllm.args cannot repeat flags that Ares sets from YAML fields")
         utilization = number(settings.get("gpu_memory_utilization", 0.9), "gpu_memory_utilization", 0.01, 0.98)
@@ -168,6 +177,12 @@ def build_spec(profile, *, materialize=False):
             if not image or image.startswith("-"):
                 raise ValueError("Set an installed vllm.image")
             limit = profile["memory"]["ram_gib"]
+            security = []
+            if settings.get("seccomp_profile"):
+                seccomp = Path(settings["seccomp_profile"]).resolve()
+                if not seccomp.is_file():
+                    raise ValueError("vllm.seccomp_profile must be an existing JSON file")
+                security = ["--security-opt", f"seccomp={seccomp}"]
             spec["docker_name"] = "ares-vllm"
             spec["docker_owner"] = uuid.uuid4().hex if materialize else "plan"
             spec["command"] = [
@@ -186,12 +201,14 @@ def build_spec(profile, *, materialize=False):
                 f"--memory={limit}g",
                 f"--memory-swap={limit}g",
                 f"--shm-size={number(settings.get('shm_size_gib', 1), 'shm_size_gib', 1, 64)}g",
+                *security,
                 "-p",
                 f"127.0.0.1:{port}:8000",
                 "--mount",
                 mount,
                 *(item for name, value in environment.items() for item in ("-e", f"{name}={value}")),
                 image,
+                *image_command,
                 "--model",
                 container_model,
                 "--host",

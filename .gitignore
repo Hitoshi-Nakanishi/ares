@@ -17,3 +17,4 @@
 /examples/*
 !/examples/strata.example.json
 !/examples/server.example.yaml
+!/examples/seccomp-io-uring.json
