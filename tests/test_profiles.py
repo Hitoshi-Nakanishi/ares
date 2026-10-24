@@ -409,6 +409,10 @@ def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
     assert "HF_HUB_OFFLINE=1" in command
     assert command[command.index("--gpu-memory-utilization") + 1] == "0.975"
     assert command[command.index("--speculative-config") + 1] == '{"method":"mtp","num_speculative_tokens":3}'
+    host_directory = build_spec({**profile, "settings": {**settings, "volume": "/run/desktop/mnt/host/wsl/models"}})
+    assert (
+        "type=bind,source=/run/desktop/mnt/host/wsl/models,target=/models,readonly" in host_directory["command"]
+    )
     for invalid in (
         {"model_path": "../outside"},
         {"model_path": "/absolute"},
@@ -419,6 +423,8 @@ def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
         {"env": {"lower": "x"}},
         {"env": {"FLAG": True}},
         {"image_command": "vllm serve"},
+        {"volume": "/run/desktop/../etc"},
+        {"volume": "/run/desktop/mnt,readonly=false"},
     ):
         with pytest.raises(ValueError):
             build_spec({**profile, "settings": {**settings, **invalid}})

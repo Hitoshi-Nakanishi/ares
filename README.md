@@ -120,7 +120,8 @@ utilization (0.9 by default), context, sequences and CPU offload. Concurrency de
 optional `swap_space_gib` passes the legacy `--swap-space` flag only when explicitly configured; current vLLM versions no longer
 expose that flag, so the default profile omits it. Container OS swap remains disabled independently. A model kept in a Docker
 named volume uses `volume` with `model_path` relative to it; the volume is mounted read-only at `/models`, so weights stay on
-the Linux disk instead of crossing the Windows file share. `image_command` goes between the image and the engine arguments
+the Linux disk instead of crossing the Windows file share. An absolute `volume` is a directory of the Docker host VM, bound
+the same way; Docker Desktop reaches a directory that a WSL distro bind-mounts under `/mnt/wsl` at `/run/desktop/mnt/host/wsl`. `image_command` goes between the image and the engine arguments
 (for example `[vllm, serve]` for an image whose entrypoint is a launcher), `env` adds container variables, `args` appends engine
 arguments that no YAML field sets, `shm_size_gib` sizes `/dev/shm` (1 GiB by default) and utilization may reach 0.98.
 Docker's default seccomp profile refuses io_uring, which engines that read weights from disk during inference need;

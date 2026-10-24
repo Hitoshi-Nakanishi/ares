@@ -108,18 +108,21 @@ def build_spec(profile, *, materialize=False):
             "vllm",
         )
         mode = settings.get("mode", "docker")
-        if settings.get("volume"):
+        if volume := settings.get("volume"):
             inside = PurePosixPath(settings["model_path"])
+            # An absolute volume is a directory of the Docker host VM, such as a WSL distro's ext4 disk.
+            host_directory = volume.startswith("/") and ".." not in PurePosixPath(volume).parts
             if (
                 mode != "docker"
-                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", settings["volume"])
+                or not (host_directory and re.fullmatch(r"[A-Za-z0-9_./-]+", volume))
+                and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", volume)
                 or inside.is_absolute()
                 or not inside.parts
                 or ".." in inside.parts
             ):
                 raise ValueError("vllm.volume needs docker mode and a relative model_path inside the volume")
             mount, container_model = (
-                f"type=volume,source={settings['volume']},target=/models,readonly",
+                f"type={'bind' if host_directory else 'volume'},source={volume},target=/models,readonly",
                 f"/models/{inside}",
             )
         else:
