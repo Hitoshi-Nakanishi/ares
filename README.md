@@ -118,7 +118,10 @@ publishing is loopback-only. Container RAM equals `memory.ram_gib`; equal memory
 Images are never pulled; model fetching and usage statistics are disabled. Native mode requires Linux. YAML controls GPU memory
 utilization (0.9 by default), context, sequences and CPU offload. Concurrency defaults to one and CPU offload to zero. The
 optional `swap_space_gib` passes the legacy `--swap-space` flag only when explicitly configured; current vLLM versions no longer
-expose that flag, so the default profile omits it. Container OS swap remains disabled independently. See
+expose that flag, so the default profile omits it. Container OS swap remains disabled independently. A model kept in a Docker
+named volume uses `volume` with `model_path` relative to it; the volume is mounted read-only at `/models`, so weights stay on
+the Linux disk instead of crossing the Windows file share. `env` adds container variables, `args` appends engine arguments
+that no YAML field sets, `shm_size_gib` sizes `/dev/shm` (1 GiB by default) and utilization may reach 0.98. See
 [vLLM engine arguments](https://docs.vllm.ai/en/latest/configuration/engine_args/).
 
 Ollama runs `ollama serve` with a loopback host, one model, one parallel inference and cloud features disabled. YAML controls

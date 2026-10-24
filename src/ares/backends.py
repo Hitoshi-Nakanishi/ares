@@ -2,8 +2,9 @@
 
 import json
 import os
+import re
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from ares.config import checked
 
@@ -90,6 +91,7 @@ def build_spec(profile, *, materialize=False):
                 "mode",
                 "executable",
                 "image",
+                "volume",
                 "model_path",
                 "model",
                 "gpu_memory_utilization",
@@ -97,13 +99,52 @@ def build_spec(profile, *, materialize=False):
                 "max_num_seqs",
                 "cpu_offload_gb",
                 "swap_space_gib",
+                "shm_size_gib",
+                "env",
+                "args",
             ),
             "vllm",
         )
-        model_path = Path(settings["model_path"]).resolve()
-        if not model_path.is_dir():
-            raise ValueError("vllm.model_path must be an existing local model directory")
-        utilization = number(settings.get("gpu_memory_utilization", 0.9), "gpu_memory_utilization", 0.01, 0.95)
+        mode = settings.get("mode", "docker")
+        if settings.get("volume"):
+            inside = PurePosixPath(settings["model_path"])
+            if (
+                mode != "docker"
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", settings["volume"])
+                or inside.is_absolute()
+                or not inside.parts
+                or ".." in inside.parts
+            ):
+                raise ValueError("vllm.volume needs docker mode and a relative model_path inside the volume")
+            mount, container_model = f"type=volume,source={settings['volume']},target=/models,readonly", f"/models/{inside}"
+        else:
+            model_path = Path(settings["model_path"]).resolve()
+            if not model_path.is_dir():
+                raise ValueError("vllm.model_path must be an existing local model directory")
+            mount, container_model = f"type=bind,source={model_path},target=/model,readonly", "/model"
+        extra_env = settings.get("env", {})
+        if not isinstance(extra_env, dict) or not all(
+            re.fullmatch(r"[A-Z_][A-Z0-9_]*", str(name)) and isinstance(value, (str, int, float)) and not isinstance(value, bool)
+            for name, value in extra_env.items()
+        ):
+            raise ValueError("vllm.env must map upper-case variable names to values")
+        extra_args = settings.get("args", [])
+        managed = {
+            "--model",
+            "--host",
+            "--port",
+            "--served-model-name",
+            "--gpu-memory-utilization",
+            "--max-model-len",
+            "--max-num-seqs",
+            "--cpu-offload-gb",
+            "--swap-space",
+        }
+        if not isinstance(extra_args, list) or not all(isinstance(item, str) for item in extra_args):
+            raise ValueError("vllm.args must be a list of strings")
+        if managed.intersection(item.split("=", 1)[0] for item in extra_args):
+            raise ValueError("vllm.args cannot repeat flags that Ares sets from YAML fields")
+        utilization = number(settings.get("gpu_memory_utilization", 0.9), "gpu_memory_utilization", 0.01, 0.98)
         arguments = [
             "--served-model-name",
             settings["model"],
@@ -118,11 +159,10 @@ def build_spec(profile, *, materialize=False):
         ]
         if "swap_space_gib" in settings:
             arguments.extend(("--swap-space", str(number(settings["swap_space_gib"], "swap_space_gib"))))
-        spec.update(
-            model=settings["model"],
-            env={"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "VLLM_NO_USAGE_STATS": "1"},
-        )
-        mode = settings.get("mode", "docker")
+        arguments.extend(extra_args)
+        environment = {name: str(value) for name, value in extra_env.items()}
+        environment.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", VLLM_NO_USAGE_STATS="1")
+        spec.update(model=settings["model"], env=environment)
         if mode == "docker":
             image = settings["image"]
             if not image or image.startswith("-"):
@@ -145,20 +185,15 @@ def build_spec(profile, *, materialize=False):
                 "all",
                 f"--memory={limit}g",
                 f"--memory-swap={limit}g",
-                "--shm-size=1g",
+                f"--shm-size={number(settings.get('shm_size_gib', 1), 'shm_size_gib', 1, 64)}g",
                 "-p",
                 f"127.0.0.1:{port}:8000",
                 "--mount",
-                f"type=bind,source={model_path},target=/model,readonly",
-                "-e",
-                "HF_HUB_OFFLINE=1",
-                "-e",
-                "TRANSFORMERS_OFFLINE=1",
-                "-e",
-                "VLLM_NO_USAGE_STATS=1",
+                mount,
+                *(item for name, value in environment.items() for item in ("-e", f"{name}={value}")),
                 image,
                 "--model",
-                "/model",
+                container_model,
                 "--host",
                 "0.0.0.0",
                 "--port",

@@ -59,7 +59,9 @@ def test_disabled_runtime_limits_allow_recovery_of_an_exited_runner(tmp_path, mo
     monkeypatch.setattr(manager, "readiness", lambda _: True)
     monkeypatch.setattr(manager, "require_memory_headroom", lambda **kw: None)
     monkeypatch.setattr(manager.subprocess, "Popen", lambda *a, **kw: SimpleNamespace(pid=6789))
-    monkeypatch.setattr(manager.psutil, "Process", lambda _: SimpleNamespace(create_time=lambda: 123, is_running=lambda: True))
+    monkeypatch.setattr(
+        manager.psutil, "Process", lambda _: SimpleNamespace(create_time=lambda: 123, is_running=lambda: True)
+    )
     assert manager.main(["autostart", "--config", str(path)]) == 0
     assert not (state / "llm-paused.json").exists()
 
@@ -376,3 +378,44 @@ def test_benchmark_records_usage_and_checks_answers_without_saving_response(monk
     rows = benchmark.measure({"backend": "strata", "model": "local-model", "port": 54321}, repetitions=1)
     assert all(row["correct"] and row["completion_tokens"] == 2 for row in rows)
     assert all("content" not in row and "prompt" not in row for row in rows)
+
+
+def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
+    settings = {
+        "mode": "docker",
+        "image": "local-image:installed",
+        "volume": "model-cache",
+        "model_path": "models/local-model",
+        "model": "local-model",
+        "gpu_memory_utilization": 0.975,
+        "shm_size_gib": 16,
+        "env": {"VLLM_PLE_TABLE_MEMORY": "disk", "VLLM_PLE_CPU_OFFLOAD": 1},
+        "args": ["--kv-cache-dtype", "fp8", "--speculative-config", '{"method":"mtp","num_speculative_tokens":3}'],
+    }
+    profile = {
+        "backend": "vllm",
+        "port": 54321,
+        "state_dir": str(tmp_path),
+        "memory": asdict(MemoryLimits()),
+        "settings": settings,
+    }
+    command = build_spec(profile)["command"]
+    assert "type=volume,source=model-cache,target=/models,readonly" in command
+    assert command[command.index("--model") + 1] == "/models/models/local-model"
+    assert "--shm-size=16g" in command
+    assert "VLLM_PLE_TABLE_MEMORY=disk" in command and "VLLM_PLE_CPU_OFFLOAD=1" in command
+    assert "HF_HUB_OFFLINE=1" in command
+    assert command[command.index("--gpu-memory-utilization") + 1] == "0.975"
+    assert command[command.index("--speculative-config") + 1] == '{"method":"mtp","num_speculative_tokens":3}'
+    for invalid in (
+        {"model_path": "../outside"},
+        {"model_path": "/absolute"},
+        {"volume": "cache,readonly=false"},
+        {"mode": "native"},
+        {"args": ["--port", "9000"]},
+        {"args": ["--max-model-len=4096"]},
+        {"env": {"lower": "x"}},
+        {"env": {"FLAG": True}},
+    ):
+        with pytest.raises(ValueError):
+            build_spec({**profile, "settings": {**settings, **invalid}})
