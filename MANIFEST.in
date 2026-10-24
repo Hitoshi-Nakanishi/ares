@@ -1,2 +1,3 @@
 include examples/strata.example.json
 include examples/server.example.yaml
+include examples/seccomp-io-uring.json
