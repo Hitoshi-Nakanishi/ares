@@ -55,7 +55,7 @@ def measure(spec, *, repetitions=3, timeout=120):
                             "stream": False,
                             **(
                                 {"chat_template_kwargs": {"enable_thinking": False}}
-                                if spec["backend"] == "strata"
+                                if spec["backend"] in ("strata", "sglang")
                                 else {}
                             ),
                         },

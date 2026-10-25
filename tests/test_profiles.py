@@ -380,6 +380,20 @@ def test_benchmark_records_usage_and_checks_answers_without_saving_response(monk
     assert all("content" not in row and "prompt" not in row for row in rows)
 
 
+@pytest.mark.parametrize("backend", ["strata", "sglang"])
+def test_benchmark_turns_thinking_off_so_short_answers_fit(monkeypatch, backend):
+    real_client = httpx.Client
+    bodies = []
+
+    def respond(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "2"}, "finish_reason": "stop"}]})
+
+    monkeypatch.setattr(benchmark.httpx, "Client", lambda **kwargs: real_client(transport=httpx.MockTransport(respond)))
+    benchmark.measure({"backend": backend, "model": "local-model", "port": 54321}, repetitions=1)
+    assert bodies and all(body["chat_template_kwargs"] == {"enable_thinking": False} for body in bodies)
+
+
 def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
     settings = {
         "mode": "docker",
