@@ -31,6 +31,13 @@ backends:
     max_model_len: 8192
     max_num_seqs: 1
     cpu_offload_gb: 0
+  sglang:
+    image: ${SGLANG_IMAGE}
+    image_command: [python3, -m, sglang.launch_server]
+    model_path: ${SGLANG_MODEL_PATH}
+    model: ${SGLANG_MODEL}
+    container_port: 30000
+    args: [--mem-fraction-static, "0.9", --context-length, "8192", --max-running-requests, "1"]
   ollama:
     executable: ollama
     model: ${OLLAMA_MODEL}

@@ -299,7 +299,7 @@ def test_ollama_is_local_single_model_and_local_only(tmp_path):
     assert spec["env"]["OLLAMA_NUM_PARALLEL"] == "1"
 
 
-@pytest.mark.parametrize("backend", ["strata", "vllm", "ollama"])
+@pytest.mark.parametrize("backend", ["strata", "vllm", "ollama", "sglang"])
 def test_readiness_checks_backend_health_and_exact_model(monkeypatch, backend):
     real_client = httpx.Client
 
@@ -451,3 +451,80 @@ def test_vllm_seccomp_profile_allows_io_uring_but_keeps_docker_blocks(tmp_path):
     assert not any(name.startswith("io_uring") for name in blocked)
     with pytest.raises(ValueError):
         build_spec({**profile, "settings": {**profile["settings"], "seccomp_profile": str(tmp_path / "missing.json")}})
+
+
+def test_sglang_recipe_image_reads_the_model_from_a_variable_and_keeps_a_cache(tmp_path):
+    settings = {
+        "image": "local-image:installed",
+        "image_command": ["recipe"],
+        "volume": "/run/desktop/mnt/host/wsl/models",
+        "model_path": "local-model",
+        "model": "local-model",
+        "model_env": "TARGET_MODEL",
+        "container_port": 8001,
+        "cache": "compile-cache",
+        "shm_size_gib": 16,
+        "env": {"NIXL": "off", "HICACHE_SIZE_GB": 16},
+    }
+    profile = {
+        "backend": "sglang",
+        "port": 54321,
+        "state_dir": str(tmp_path),
+        "memory": asdict(MemoryLimits()),
+        "settings": settings,
+    }
+    spec = build_spec(profile)
+    command = spec["command"]
+    assert spec["docker_name"] == "ares-sglang"
+    assert "127.0.0.1:54321:8001" in command
+    assert "type=bind,source=/run/desktop/mnt/host/wsl/models,target=/models,readonly" in command
+    assert "type=volume,source=compile-cache,target=/cache" in command
+    assert "TARGET_MODEL=/models/local-model" in command and "HICACHE_SIZE_GB=16" in command
+    assert "HF_HUB_OFFLINE=1" in command and "--pull=never" in command
+    assert command[command.index("--ulimit") + 1] == "memlock=-1:-1"
+    assert command[-2:] == ["local-image:installed", "recipe"]
+    for invalid in (
+        {"model_env": "lower"},
+        {"model_env": "NIXL"},
+        {"container_port": 0},
+        {"container_port": True},
+        {"cache": "cache,readonly=false"},
+        {"model_path": "../outside"},
+        {"args": ["--port", "9000"]},
+        {"mode": "native"},
+    ):
+        with pytest.raises(ValueError):
+            build_spec({**profile, "settings": {**settings, **invalid}})
+
+
+def test_sglang_server_image_gets_its_model_and_port_as_arguments(tmp_path):
+    spec = build_spec(
+        {
+            "backend": "sglang",
+            "port": 54321,
+            "state_dir": str(tmp_path),
+            "memory": asdict(MemoryLimits()),
+            "settings": {
+                "image": "local-image:installed",
+                "image_command": ["python3", "-m", "sglang.launch_server"],
+                "model_path": str(tmp_path),
+                "model": "local-model",
+                "args": ["--mem-fraction-static", "0.9"],
+            },
+        }
+    )
+    command = spec["command"]
+    assert "127.0.0.1:54321:30000" in command
+    assert f"type=bind,source={tmp_path.resolve()},target=/model,readonly" in command
+    assert command[command.index("sglang.launch_server") + 1 :] == [
+        "--model-path",
+        "/model",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "30000",
+        "--served-model-name",
+        "local-model",
+        "--mem-fraction-static",
+        "0.9",
+    ]

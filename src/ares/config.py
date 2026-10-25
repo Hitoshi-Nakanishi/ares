@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 
+BACKENDS = ("strata", "vllm", "ollama", "sglang")
+
 
 @dataclass(frozen=True)
 class MemoryLimits:
@@ -61,13 +63,13 @@ def load_profile(path, backend=None, *, resolve_settings=True):
     if data.get("version", 1) != 1 or data.get("host", "127.0.0.1") != "127.0.0.1":
         raise ValueError("Only version 1 and IPv4 loopback are supported")
     selected = backend or data.get("backend", "strata")
-    if selected not in ("strata", "vllm", "ollama"):
-        raise ValueError("backend must be strata, vllm or ollama")
+    if selected not in BACKENDS:
+        raise ValueError(f"backend must be one of {', '.join(BACKENDS)}")
     port = data.get("port", 54321)
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise ValueError("port must be an integer between 1 and 65535")
     memory = MemoryLimits(**checked(data.get("memory", {}), (f.name for f in fields(MemoryLimits)), "memory"))
-    backends = checked(data.get("backends", {}), ("strata", "vllm", "ollama"), "backends")
+    backends = checked(data.get("backends", {}), BACKENDS, "backends")
     settings = expand(backends.get(selected, {})) if resolve_settings else {}
     state_dir = Path(expand(data.get("state_dir", ".local"))).expanduser()
     if not state_dir.is_absolute():

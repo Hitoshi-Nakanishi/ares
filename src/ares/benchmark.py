@@ -13,7 +13,7 @@ import httpx
 import psutil
 
 from ares.backends import build_spec
-from ares.config import load_profile
+from ares.config import BACKENDS, load_profile
 from ares.manager import owned_process, readiness
 
 CASES = (
@@ -92,7 +92,7 @@ def main(argv=None):
     parser.add_argument(
         "--config", type=Path, default=os.getenv("LOCAL_LLM_CONFIG"), required=not os.getenv("LOCAL_LLM_CONFIG")
     )
-    parser.add_argument("--backend", choices=("strata", "vllm", "ollama"))
+    parser.add_argument("--backend", choices=BACKENDS)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=3)
     args = parser.parse_args(argv)

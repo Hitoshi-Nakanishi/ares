@@ -12,7 +12,7 @@ import httpx
 import psutil
 
 from ares.backends import build_spec
-from ares.config import load_profile
+from ares.config import BACKENDS, load_profile
 from ares.inhibition import inhibit
 from ares.lifecycle import claim_start, launch_background, wait_for_exit
 from ares.resources import require_memory_headroom
@@ -39,7 +39,7 @@ def readiness(spec):
             health.raise_for_status()
             if health.json().get("loaded") is not True:
                 return False
-        elif spec["backend"] == "vllm":
+        elif spec["backend"] in ("vllm", "sglang"):
             client.get(base + "/health").raise_for_status()
         else:
             client.get(base + "/api/version").raise_for_status()
@@ -76,7 +76,7 @@ def main(argv=None):
         "action", choices=("start", "autostart", "stop", "restart", "status", "plan"), nargs="?", default="start"
     )
     parser.add_argument("--config", type=Path, default=os.getenv("LOCAL_LLM_CONFIG"))
-    parser.add_argument("--backend", choices=("strata", "vllm", "ollama"))
+    parser.add_argument("--backend", choices=BACKENDS)
     parser.add_argument("--wait", type=float, default=7200)
     parser.add_argument(
         "--resume", action="store_true", help="Explicitly clear an operator or safety stop before starting"

@@ -15,6 +15,89 @@ def number(value, name, minimum=0, maximum=1_000_000):
     return value
 
 
+def docker_source(value, name):
+    # An absolute source is a directory of the Docker host VM, such as a WSL distro's ext4 disk.
+    if value.startswith("/") and ".." not in PurePosixPath(value).parts and re.fullmatch(r"[A-Za-z0-9_./-]+", value):
+        return f"type=bind,source={value}"
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
+        return f"type=volume,source={value}"
+    raise ValueError(f"{name} must be a Docker volume name or an absolute directory of the Docker host VM")
+
+
+def model_mount(settings, backend):
+    """Return the read-only model mount and the model path inside the container."""
+    if volume := settings.get("volume"):
+        inside = PurePosixPath(settings["model_path"])
+        if inside.is_absolute() or not inside.parts or ".." in inside.parts:
+            raise ValueError(f"{backend}.model_path must be a relative directory inside the volume")
+        return f"{docker_source(volume, f'{backend}.volume')},target=/models,readonly", f"/models/{inside}"
+    model_path = Path(settings["model_path"]).resolve()
+    if not model_path.is_dir():
+        raise ValueError(f"{backend}.model_path must be an existing local model directory")
+    return f"type=bind,source={model_path},target=/model,readonly", "/model"
+
+
+def container_environment(settings, backend, managed):
+    """Validate the container variables, image command and engine arguments a profile adds."""
+    extra_env = settings.get("env", {})
+    if not isinstance(extra_env, dict) or not all(
+        re.fullmatch(r"[A-Z_][A-Z0-9_]*", str(name))
+        and isinstance(value, (str, int, float))
+        and not isinstance(value, bool)
+        for name, value in extra_env.items()
+    ):
+        raise ValueError(f"{backend}.env must map upper-case variable names to values")
+    for name in ("args", "image_command"):
+        items = settings.get(name, [])
+        if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
+            raise ValueError(f"{backend}.{name} must be a list of strings")
+    if managed.intersection(item.split("=", 1)[0] for item in settings.get("args", [])):
+        raise ValueError(f"{backend}.args cannot repeat flags that Ares sets from YAML fields")
+    return {name: str(value) for name, value in extra_env.items()}
+
+
+def docker_run(spec, settings, mounts, container_port, options=(), *, materialize):
+    """Start an installed image with the GPU, a RAM cap without swap and a loopback-only port."""
+    backend = spec["backend"]
+    image = settings["image"]
+    if not image or image.startswith("-"):
+        raise ValueError(f"Set an installed {backend}.image")
+    security = []
+    if settings.get("seccomp_profile"):
+        seccomp = Path(settings["seccomp_profile"]).resolve()
+        if not seccomp.is_file():
+            raise ValueError(f"{backend}.seccomp_profile must be an existing JSON file")
+        security = ["--security-opt", f"seccomp={seccomp}"]
+    limit = spec["memory"]["ram_gib"]
+    spec["docker_name"] = f"ares-{backend}"
+    spec["docker_owner"] = uuid.uuid4().hex if materialize else "plan"
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "--pull=never",
+        "--name",
+        spec["docker_name"],
+        "--label",
+        "ares.managed=true",
+        "--label",
+        f"ares.owner={spec['docker_owner']}",
+        "--gpus",
+        "all",
+        f"--memory={limit}g",
+        f"--memory-swap={limit}g",
+        f"--shm-size={number(settings.get('shm_size_gib', 1), 'shm_size_gib', 1, 64)}g",
+        *options,
+        *security,
+        "-p",
+        f"127.0.0.1:{spec['port']}:{container_port}",
+        *(item for mount in mounts for item in ("--mount", mount)),
+        *(item for name, value in spec["env"].items() for item in ("-e", f"{name}={value}")),
+        image,
+        *settings.get("image_command", []),
+    ]
+
+
 def build_spec(profile, *, materialize=False):
     backend, port, settings = profile["backend"], profile["port"], profile["settings"]
     state = Path(profile["state_dir"])
@@ -108,54 +191,24 @@ def build_spec(profile, *, materialize=False):
             "vllm",
         )
         mode = settings.get("mode", "docker")
-        if volume := settings.get("volume"):
-            inside = PurePosixPath(settings["model_path"])
-            # An absolute volume is a directory of the Docker host VM, such as a WSL distro's ext4 disk.
-            host_directory = volume.startswith("/") and ".." not in PurePosixPath(volume).parts
-            if (
-                mode != "docker"
-                or not (host_directory and re.fullmatch(r"[A-Za-z0-9_./-]+", volume))
-                and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", volume)
-                or inside.is_absolute()
-                or not inside.parts
-                or ".." in inside.parts
-            ):
-                raise ValueError("vllm.volume needs docker mode and a relative model_path inside the volume")
-            mount, container_model = (
-                f"type={'bind' if host_directory else 'volume'},source={volume},target=/models,readonly",
-                f"/models/{inside}",
-            )
-        else:
-            model_path = Path(settings["model_path"]).resolve()
-            if not model_path.is_dir():
-                raise ValueError("vllm.model_path must be an existing local model directory")
-            mount, container_model = f"type=bind,source={model_path},target=/model,readonly", "/model"
-        extra_env = settings.get("env", {})
-        if not isinstance(extra_env, dict) or not all(
-            re.fullmatch(r"[A-Z_][A-Z0-9_]*", str(name))
-            and isinstance(value, (str, int, float))
-            and not isinstance(value, bool)
-            for name, value in extra_env.items()
-        ):
-            raise ValueError("vllm.env must map upper-case variable names to values")
-        extra_args = settings.get("args", [])
-        managed = {
-            "--model",
-            "--host",
-            "--port",
-            "--served-model-name",
-            "--gpu-memory-utilization",
-            "--max-model-len",
-            "--max-num-seqs",
-            "--cpu-offload-gb",
-            "--swap-space",
-        }
-        image_command = settings.get("image_command", [])
-        for name, items in (("args", extra_args), ("image_command", image_command)):
-            if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
-                raise ValueError(f"vllm.{name} must be a list of strings")
-        if managed.intersection(item.split("=", 1)[0] for item in extra_args):
-            raise ValueError("vllm.args cannot repeat flags that Ares sets from YAML fields")
+        if settings.get("volume") and mode != "docker":
+            raise ValueError("vllm.volume needs docker mode")
+        mount, container_model = model_mount(settings, "vllm")
+        environment = container_environment(
+            settings,
+            "vllm",
+            {
+                "--model",
+                "--host",
+                "--port",
+                "--served-model-name",
+                "--gpu-memory-utilization",
+                "--max-model-len",
+                "--max-num-seqs",
+                "--cpu-offload-gb",
+                "--swap-space",
+            },
+        )
         utilization = number(settings.get("gpu_memory_utilization", 0.9), "gpu_memory_utilization", 0.01, 0.98)
         arguments = [
             "--served-model-name",
@@ -171,47 +224,12 @@ def build_spec(profile, *, materialize=False):
         ]
         if "swap_space_gib" in settings:
             arguments.extend(("--swap-space", str(number(settings["swap_space_gib"], "swap_space_gib"))))
-        arguments.extend(extra_args)
-        environment = {name: str(value) for name, value in extra_env.items()}
+        arguments.extend(settings.get("args", []))
         environment.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", VLLM_NO_USAGE_STATS="1")
         spec.update(model=settings["model"], env=environment)
         if mode == "docker":
-            image = settings["image"]
-            if not image or image.startswith("-"):
-                raise ValueError("Set an installed vllm.image")
-            limit = profile["memory"]["ram_gib"]
-            security = []
-            if settings.get("seccomp_profile"):
-                seccomp = Path(settings["seccomp_profile"]).resolve()
-                if not seccomp.is_file():
-                    raise ValueError("vllm.seccomp_profile must be an existing JSON file")
-                security = ["--security-opt", f"seccomp={seccomp}"]
-            spec["docker_name"] = "ares-vllm"
-            spec["docker_owner"] = uuid.uuid4().hex if materialize else "plan"
             spec["command"] = [
-                "docker",
-                "run",
-                "--rm",
-                "--pull=never",
-                "--name",
-                spec["docker_name"],
-                "--label",
-                "ares.managed=true",
-                "--label",
-                f"ares.owner={spec['docker_owner']}",
-                "--gpus",
-                "all",
-                f"--memory={limit}g",
-                f"--memory-swap={limit}g",
-                f"--shm-size={number(settings.get('shm_size_gib', 1), 'shm_size_gib', 1, 64)}g",
-                *security,
-                "-p",
-                f"127.0.0.1:{port}:8000",
-                "--mount",
-                mount,
-                *(item for name, value in environment.items() for item in ("-e", f"{name}={value}")),
-                image,
-                *image_command,
+                *docker_run(spec, settings, [mount], 8000, materialize=materialize),
                 "--model",
                 container_model,
                 "--host",
@@ -226,7 +244,7 @@ def build_spec(profile, *, materialize=False):
             spec["command"] = [
                 settings.get("executable", "vllm"),
                 "serve",
-                str(model_path),
+                str(Path(settings["model_path"]).resolve()),
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -235,6 +253,61 @@ def build_spec(profile, *, materialize=False):
             ]
         else:
             raise ValueError("vllm.mode must be docker or native")
+    elif backend == "sglang":
+        checked(
+            settings,
+            (
+                "image",
+                "image_command",
+                "volume",
+                "model_path",
+                "model",
+                "model_env",
+                "container_port",
+                "cache",
+                "shm_size_gib",
+                "seccomp_profile",
+                "env",
+                "args",
+            ),
+            "sglang",
+        )
+        mount, container_model = model_mount(settings, "sglang")
+        mounts = [mount]
+        if settings.get("cache"):
+            mounts.append(f"{docker_source(settings['cache'], 'sglang.cache')},target=/cache")
+        environment = container_environment(
+            settings, "sglang", {"--model-path", "--host", "--port", "--served-model-name"}
+        )
+        container_port = settings.get("container_port", 30000)
+        if isinstance(container_port, bool) or not isinstance(container_port, int) or not 1 <= container_port <= 65535:
+            raise ValueError("sglang.container_port must be an integer between 1 and 65535")
+        if model_env := settings.get("model_env"):
+            # A recipe image reads the model path from a variable and refuses server arguments.
+            if not re.fullmatch(r"[A-Z_][A-Z0-9_]*", model_env) or model_env in environment:
+                raise ValueError("sglang.model_env must be an upper-case variable name that env does not set")
+            environment[model_env] = container_model
+            arguments = settings.get("args", [])
+        else:
+            arguments = [
+                "--model-path",
+                container_model,
+                "--host",
+                "0.0.0.0",
+                "--port",
+                str(container_port),
+                "--served-model-name",
+                settings["model"],
+                *settings.get("args", []),
+            ]
+        environment.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
+        spec.update(model=settings["model"], env=environment)
+        # Host-RAM caches pin memory, which needs an unlimited locked-memory limit.
+        options = ["--init", "--ulimit", "memlock=-1:-1"]
+        spec["command"] = [
+            *docker_run(spec, settings, mounts, container_port, options, materialize=materialize),
+            *arguments,
+        ]
     else:
         checked(settings, ("executable", "model", "models_dir", "context_length", "vram_reserve_mib"), "ollama")
         spec.update(

@@ -2,10 +2,11 @@
 
 Ares manages a workstation's GPU inference servers.
 
-Local-only launch and memory supervision for **Strata (default)**, **vLLM**, and **Ollama**. This is server management, not an
-agent framework or inference engine. Model weights, credentials, application workflows and databases are excluded. There is no
-automatic fallback, model download, external listener or boot task. Strata and Ollama run natively on Windows; vLLM uses an
-already installed GPU Docker image or a native Linux installation.
+Local-only launch and memory supervision for **Strata (default)**, **vLLM**, **SGLang**, and **Ollama**. This is server
+management, not an agent framework or inference engine. Model weights, credentials, application workflows and databases are
+excluded. There is no automatic fallback, model download, external listener or boot task. Strata and Ollama run natively on
+Windows; vLLM uses an already installed GPU Docker image or a native Linux installation; SGLang uses an already installed GPU
+Docker image.
 
 ## Install and run
 
@@ -90,6 +91,7 @@ backend: strata
 | --- | --- |
 | `strata` | `backends.strata.home` and `config`, pointing to the installed native engine and its JSON model configuration |
 | `vllm` | `backends.vllm.image`, `model_path` and `model`, identifying a local Docker image, model directory and API model name |
+| `sglang` | `backends.sglang.image`, `model_path` and `model`, identifying a local Docker image, model directory and served model name |
 | `ollama` | `backends.ollama.executable` and `model`, identifying an installed executable and an already installed model |
 
 For example, replace `backend: strata` with `backend: ollama` and run:
@@ -128,6 +130,17 @@ Docker's default seccomp profile refuses io_uring, which engines that read weigh
 `seccomp_profile` names a replacement. [`examples/seccomp-io-uring.json`](examples/seccomp-io-uring.json) keeps the syscalls
 Docker documents as blocked by default (mounts, namespaces, tracing, key and kernel-module calls) and allows io_uring. See
 [vLLM engine arguments](https://docs.vllm.ai/en/latest/configuration/engine_args/).
+
+SGLang runs only in Docker, with the same rules as vLLM Docker mode: an installed image that is never pulled, a read-only model
+directory or `volume`, a loopback-only port, `memory.ram_gib` as container RAM without swap, offline model loading, and the
+`image_command`, `env`, `args`, `shm_size_gib` and `seccomp_profile` fields. A server image, such as one started with
+`image_command: [python3, -m, sglang.launch_server]`, receives `--model-path`, `--host`, `--port` and `--served-model-name`
+from Ares, and `args` appends further [server arguments](https://docs.sglang.ai/advanced_features/server_arguments.html).
+`container_port` is the port the server listens on inside the container, 30000 by default. An image that starts a recipe and
+refuses arguments instead receives the model path in the variable that `model_env` names; its other settings go in `env`, and
+`container_port` and `model` must match the port and model name that the recipe serves. `cache` mounts a Docker volume or a
+directory of the Docker host VM, writable, at `/cache`, so compiled kernels survive the container. The container also gets an
+init process and an unlimited locked-memory limit, because SGLang pins host RAM for its caches.
 
 Ollama runs `ollama serve` with a loopback host, one model, one parallel inference and cloud features disabled. YAML controls
 the installed model, model directory, context and GPU overhead reserve. This reserve is a scheduling hint, not a hard VRAM cap;
