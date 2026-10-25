@@ -1,5 +1,11 @@
 # Ares
 
+[![Tests and distribution](https://github.com/Hitoshi-Nakanishi/ares/actions/workflows/tests.yml/badge.svg)](https://github.com/Hitoshi-Nakanishi/ares/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FHitoshi-Nakanishi%2Fares%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version)](pyproject.toml)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Ares manages a workstation's GPU inference servers.
 
 Local-only launch and memory supervision for **Strata (default)**, **vLLM**, **SGLang**, and **Ollama**. This is server
@@ -7,6 +13,17 @@ management, not an agent framework or inference engine. Model weights, credentia
 excluded. There is no automatic fallback, model download, external listener or boot task. Strata and Ollama run natively on
 Windows; vLLM uses an already installed GPU Docker image or a native Linux installation; SGLang uses an already installed GPU
 Docker image.
+
+```mermaid
+flowchart LR
+    caller["Operator or application startup"] -- "start, autostart, status,<br/>stop, restart, plan" --> ares["Ares<br/>private YAML profile<br/>state directory"]
+    ares -- "admits a start only with<br/>enough RAM and commit" --> runner["Detached runner<br/>watches process and host memory,<br/>stops the tree on a breach"]
+    runner -- "launches exactly one" --> engine{{"Strata, vLLM,<br/>SGLang or Ollama"}}
+    client["Application requests"] -- "127.0.0.1:port<br/>/v1/chat/completions" --> engine
+```
+
+Ares checks memory before every start, records each stop in the state directory and never restarts or switches engines by
+itself. Clients talk to the selected engine directly on the loopback port.
 
 ## Install and run
 
@@ -256,7 +273,8 @@ python -m ruff format --check src tests
 ```
 
 Tests use tiny processes and mocked services without a GPU, model, database or credentials. Native Windows job tests skip on
-other operating systems. Engine and model licensing remain separate from this launcher.
+other operating systems. The [Tests and distribution workflow](.github/workflows/tests.yml) runs these checks, builds and
+installs the package on Windows and Linux with Python 3.11 and 3.14 for every push and pull request. Engine and model licensing remain separate from this launcher.
 
 Only generic source, tests, metadata, documentation and examples belong in Git. The allowlist ignore file excludes private YAML,
 `.env`, weights, logs, environments and build products by default. Follow [publication checks](PUBLICATION.md) before publishing;
