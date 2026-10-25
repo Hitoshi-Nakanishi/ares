@@ -6,6 +6,10 @@
 !/MANIFEST.in
 !/AGENTS.md
 !/PUBLICATION.md
+!/LICENSE
+!/THIRD_PARTY_NOTICES.md
+!/SECURITY.md
+!/CONTRIBUTING.md
 !/.github/
 !/.github/workflows/
 !/.github/workflows/tests.yml

@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import httpx
@@ -26,6 +27,37 @@ def server_environment() -> dict[str, str]:
     source = str(Path(__file__).resolve().parents[1])
     environment["PYTHONPATH"] = os.pathsep.join(filter(None, (source, environment.get("PYTHONPATH"))))
     return environment
+
+
+def launch_background(command: list[str], cwd: Path, stream) -> subprocess.Popen:
+    windows = sys.platform == "win32"
+    flags = (
+        subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_BREAKAWAY_FROM_JOB
+        if windows
+        else 0
+    )
+    options = {
+        "cwd": cwd,
+        "env": server_environment(),
+        "stdin": subprocess.DEVNULL,
+        "stdout": stream,
+        "stderr": subprocess.STDOUT,
+        "creationflags": flags,
+        "start_new_session": not windows,
+    }
+    try:
+        return subprocess.Popen(command, **options)
+    except OSError as exc:
+        if not windows or getattr(exc, "winerror", None) != 5:
+            raise
+        warnings.warn(
+            "The host denied job breakaway; the runner will inherit the host job and may stop with it. "
+            "Ares memory supervision remains enabled when configured.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        options["creationflags"] = flags & ~subprocess.CREATE_BREAKAWAY_FROM_JOB
+        return subprocess.Popen(command, **options)
 
 
 def matches_server(process: psutil.Process, root: Path) -> bool:
@@ -206,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
                 else [str(python), "-u", "-m", "serve.server", "--engine", "strata", "--host", "127.0.0.1"]
             )
             with (root / "strata-server.out.log").open("a", encoding="utf-8") as log:
-                child = subprocess.Popen(
+                child = launch_background(
                     [
                         *command,
                         "--config",
@@ -214,19 +246,8 @@ def main(argv: list[str] | None = None) -> int:
                         "--port",
                         str(settings.get("port", 8000)),
                     ],
-                    cwd=root,
-                    env=server_environment(),
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    creationflags=(
-                        subprocess.DETACHED_PROCESS
-                        | subprocess.CREATE_NEW_PROCESS_GROUP
-                        | subprocess.CREATE_BREAKAWAY_FROM_JOB
-                    )
-                    if os.name == "nt"
-                    else 0,
-                    start_new_session=os.name != "nt",
+                    root,
+                    log,
                 )
             process = psutil.Process(child.pid)
             pid_file.write_text(json.dumps({"pid": child.pid, "created": process.create_time()}))

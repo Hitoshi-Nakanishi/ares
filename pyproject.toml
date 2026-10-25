@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "ares"
 version = "0.1.0"
 description = "Local LLM server management with YAML profiles and host-memory protection"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.28,<1", "psutil>=7,<8", "PyYAML>=6,<7"]
 

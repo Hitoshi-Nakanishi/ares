@@ -204,6 +204,9 @@ creation time and the runner specification path. The root runner detaches from t
 reader locks cannot kill healthy inference. Protection stops are recorded in `llm-memory.json`; nothing automatically restarts
 or falls back. RAM and GPU are shared with other applications, so these controls do not replace workload validation.
 
+When a Windows host forbids leaving its job, Ares warns and starts the same runner inside that host job. The configured Ares
+memory supervision still applies, but the host can end the runner when it closes its job. Other launch errors remain errors.
+
 State, effective configuration, PID/lock records, logs and benchmark outputs stay outside Git. The environment-only Strata
 launch with `STRATA_HOME` and `STRATA_CONFIG` remains available when no YAML profile is selected.
 
@@ -246,3 +249,9 @@ Only generic source, tests, metadata, documentation and examples belong in Git. 
 `.env`, weights, logs, environments and build products by default. Follow [publication checks](PUBLICATION.md) before publishing;
 ignoring a file cannot sanitize an already tracked secret. An existing process whose ownership cannot be verified must be
 inspected by its operator before stopping it.
+
+## License and contributions
+
+Ares source is released under the [MIT License](LICENSE). Dependencies, engines and models retain their own licenses; see
+[third-party notices](THIRD_PARTY_NOTICES.md). Use [CONTRIBUTING.md](CONTRIBUTING.md) for development and
+[SECURITY.md](SECURITY.md) for confidential vulnerability reporting.

@@ -1,8 +1,9 @@
 # Publication checks
 
-The owner must select a distribution license and resolve every privacy finding before publication. No license grant is
-implied by this checklist. Model and engine licenses are separate from the launcher's source.
+Ares source is under the [MIT License](LICENSE). Resolve every privacy finding before publication and retain the
+[third-party notices](THIRD_PARTY_NOTICES.md). Model and engine licenses are separate from the launcher's source.
 
+The following is the maintainer's privacy gate; users and contributors do not need the private policy to install or test Ares.
 Argus runs locally from a separate guard checkout with the owner's private policy. Keep that policy outside this repository.
 With that environment activated, run from its root:
 

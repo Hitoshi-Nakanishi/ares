@@ -4,7 +4,6 @@ import argparse
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -15,7 +14,7 @@ import psutil
 from ares.backends import build_spec
 from ares.config import load_profile
 from ares.inhibition import inhibit
-from ares.lifecycle import claim_start, server_environment, wait_for_exit
+from ares.lifecycle import claim_start, launch_background, wait_for_exit
 from ares.resources import require_memory_headroom
 from ares.runner import stop_container
 
@@ -181,21 +180,10 @@ def main(argv=None):
             if args.resume:
                 pause.unlink(missing_ok=True)
             try:
-                child = subprocess.Popen(
+                child = launch_background(
                     [sys.executable, "-u", "-m", "ares.runner", str(spec_path)],
-                    env=server_environment(),
-                    cwd=state,
-                    stdin=subprocess.DEVNULL,
-                    stdout=stream,
-                    stderr=subprocess.STDOUT,
-                    creationflags=(
-                        subprocess.DETACHED_PROCESS
-                        | subprocess.CREATE_NEW_PROCESS_GROUP
-                        | subprocess.CREATE_BREAKAWAY_FROM_JOB
-                    )
-                    if os.name == "nt"
-                    else 0,
-                    start_new_session=os.name != "nt",
+                    state,
+                    stream,
                 )
             except OSError:
                 inhibit(state, "Inference launch failed; inspect logs before explicit start --resume")

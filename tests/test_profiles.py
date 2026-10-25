@@ -58,7 +58,7 @@ def test_disabled_runtime_limits_allow_recovery_of_an_exited_runner(tmp_path, mo
     monkeypatch.setattr(manager.psutil, "pid_exists", lambda _: False)
     monkeypatch.setattr(manager, "readiness", lambda _: True)
     monkeypatch.setattr(manager, "require_memory_headroom", lambda **kw: None)
-    monkeypatch.setattr(manager.subprocess, "Popen", lambda *a, **kw: SimpleNamespace(pid=6789))
+    monkeypatch.setattr(manager, "launch_background", lambda *a, **kw: SimpleNamespace(pid=6789))
     monkeypatch.setattr(
         manager.psutil, "Process", lambda _: SimpleNamespace(create_time=lambda: 123, is_running=lambda: True)
     )
@@ -123,7 +123,7 @@ def test_resume_launch_failure_restores_the_pause(tmp_path, monkeypatch):
     def failed(*args, **kwargs):
         raise OSError("launch unavailable")
 
-    monkeypatch.setattr(manager.subprocess, "Popen", failed)
+    monkeypatch.setattr(manager, "launch_background", failed)
     with pytest.raises(OSError, match="launch unavailable"):
         manager.main(["start", "--resume", "--config", str(path)])
     assert "launch failed" in json.loads((state / "llm-paused.json").read_text())["reason"]
@@ -179,7 +179,7 @@ def test_autostart_skips_memory_failure_without_launch(tmp_path, monkeypatch, ca
     monkeypatch.setattr(manager, "readiness", lambda spec: False)
     monkeypatch.setattr(manager, "claim_start", lambda path: True)
     monkeypatch.setattr(manager, "require_memory_headroom", insufficient)
-    monkeypatch.setattr(manager.subprocess, "Popen", lambda *a, **kw: pytest.fail("Memory guard must prevent launch"))
+    monkeypatch.setattr(manager, "launch_background", lambda *a, **kw: pytest.fail("Memory guard must prevent launch"))
     assert manager.main(["autostart", "--config", str(path)]) == 0
     assert checks == [{"available_gib": 64, "commit_gib": 148}]
     assert "autostart skipped" in capsys.readouterr().out

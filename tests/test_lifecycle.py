@@ -12,6 +12,44 @@ import pytest
 from ares import lifecycle as strata
 
 
+@pytest.mark.parametrize("error", [None, 5, 2])
+def test_background_launch_respects_windows_host_job_policy(tmp_path, monkeypatch, error):
+    monkeypatch.setattr(sys, "platform", "win32")
+    for name, value in (
+        ("DETACHED_PROCESS", 8),
+        ("CREATE_NEW_PROCESS_GROUP", 512),
+        ("CREATE_BREAKAWAY_FROM_JOB", 0x01000000),
+    ):
+        monkeypatch.setattr(subprocess, name, value, raising=False)
+    calls = []
+    child = object()
+    command = ["python", "-m", "ares.runner"]
+
+    def spawn(args, **kwargs):
+        calls.append((args, kwargs.copy()))
+        if len(calls) == 1 and error:
+            exc = OSError("host denied launch")
+            exc.winerror = error
+            raise exc
+        return child
+
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    if error == 5:
+        with pytest.warns(RuntimeWarning, match="inherit the host job"):
+            assert strata.launch_background(command, tmp_path, None) is child
+        assert len(calls) == 2
+        assert calls[1][1]["creationflags"] == 8 | 512
+        assert calls[0][0] == calls[1][0] == command
+    elif error:
+        with pytest.raises(OSError):
+            strata.launch_background(command, tmp_path, None)
+        assert len(calls) == 1
+    else:
+        assert strata.launch_background(command, tmp_path, None) is child
+        assert len(calls) == 1
+    assert calls[0][1]["creationflags"] == 8 | 512 | 0x01000000
+
+
 def test_server_environment_allows_slow_first_start(monkeypatch):
     monkeypatch.delenv("STRATA_ENGINE_READY_S", raising=False)
     assert strata.server_environment()["STRATA_ENGINE_READY_S"] == "7200"
