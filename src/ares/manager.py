@@ -25,11 +25,7 @@ def owned_process(record):
         process = psutil.Process(record["pid"])
         command = process.cmdline()
         spec_path = str(Path(record["spec_path"]).resolve())
-        if (
-            abs(process.create_time() - record["created"]) < 1
-            and {"ares.runner", "ares.runner", "ares.runner"}.intersection(command)
-            and spec_path in command
-        ):
+        if abs(process.create_time() - record["created"]) < 1 and "ares.runner" in command and spec_path in command:
             return process
     except (KeyError, OSError, psutil.Error):
         pass

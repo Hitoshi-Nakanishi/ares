@@ -34,8 +34,6 @@ def matches_server(process: psutil.Process, root: Path) -> bool:
         "serve.server",
         "strata_server.supervisor",
         "ares.supervisor",
-        "ares.supervisor",
-        "ares.supervisor",
         str(root / "serve" / "server.py"),
     }
     if not entry_points.intersection(command):
@@ -192,12 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(state or {"loaded": False}, ensure_ascii=False))
             return 0 if ready else 1
         if ready:
-            if os.name == "nt" and (
-                process is None
-                or not {"ares.supervisor", "ares.supervisor", "ares.supervisor"}.intersection(
-                    process.cmdline()
-                )
-            ):
+            if os.name == "nt" and (process is None or "ares.supervisor" not in process.cmdline()):
                 raise SystemExit("Existing Strata has no RAM supervisor; use the managed restart before analysis")
             print(f"Strata ready: {base_url}/v1 model={state['model']}")
             return 0

@@ -243,6 +243,6 @@ Tests use tiny processes and mocked services without a GPU, model, database or c
 other operating systems. Engine and model licensing remain separate from this launcher.
 
 Only generic source, tests, metadata, documentation and examples belong in Git. The allowlist ignore file excludes private YAML,
-`.env`, weights, logs, environments and build products by default. Review staged files and the complete history before future
-publication; ignoring a file cannot sanitize an already tracked secret. The shared remote is the private GitHub repository
-`Hitoshi-Nakanishi/ares`. Use ordinary `git push` and `git pull --rebase` on `main` after committing local changes.
+`.env`, weights, logs, environments and build products by default. Follow [publication checks](PUBLICATION.md) before publishing;
+ignoring a file cannot sanitize an already tracked secret. An existing process whose ownership cannot be verified must be
+inspected by its operator before stopping it.

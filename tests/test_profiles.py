@@ -14,8 +14,8 @@ from ares.backends import build_spec
 from ares.config import MemoryLimits, load_profile
 
 
-@pytest.mark.parametrize("module", ["ares.runner", "ares.runner", "ares.runner", "unrelated.runner"])
-def test_renamed_runner_keeps_verified_ownership(tmp_path, monkeypatch, module):
+@pytest.mark.parametrize("module", ["ares.runner", "unrelated.runner"])
+def test_runner_requires_verified_ownership(tmp_path, monkeypatch, module):
     spec_path = str((tmp_path / "launch.json").resolve())
     process = SimpleNamespace(create_time=lambda: 123, cmdline=lambda: ["python", "-m", module, spec_path])
     monkeypatch.setattr(manager.psutil, "Process", lambda pid: process)
@@ -41,7 +41,7 @@ def profile_file(tmp_path, **changes):
 
 @pytest.mark.parametrize("value", ["false", 0, None])
 def test_runtime_enforcement_requires_an_explicit_boolean(value):
-    with pytest.raises(ValueError, match="enforce_runtime"):
+    with pytest.raises(TypeError, match="enforce_runtime"):
         MemoryLimits(enforce_runtime=value)
 
 
@@ -410,9 +410,7 @@ def test_vllm_serves_a_model_from_a_docker_volume_with_engine_options(tmp_path):
     assert command[command.index("--gpu-memory-utilization") + 1] == "0.975"
     assert command[command.index("--speculative-config") + 1] == '{"method":"mtp","num_speculative_tokens":3}'
     host_directory = build_spec({**profile, "settings": {**settings, "volume": "/run/desktop/mnt/host/wsl/models"}})
-    assert (
-        "type=bind,source=/run/desktop/mnt/host/wsl/models,target=/models,readonly" in host_directory["command"]
-    )
+    assert "type=bind,source=/run/desktop/mnt/host/wsl/models,target=/models,readonly" in host_directory["command"]
     for invalid in (
         {"model_path": "../outside"},
         {"model_path": "/absolute"},

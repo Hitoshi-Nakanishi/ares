@@ -4,6 +4,11 @@
 !/README.md
 !/pyproject.toml
 !/MANIFEST.in
+!/AGENTS.md
+!/PUBLICATION.md
+!/.github/
+!/.github/workflows/
+!/.github/workflows/tests.yml
 !/src/
 /src/*
 !/src/ares/

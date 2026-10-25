@@ -20,7 +20,7 @@ class MemoryLimits:
 
     def __post_init__(self):
         if not isinstance(self.enforce_runtime, bool):
-            raise ValueError("memory.enforce_runtime must be a boolean")
+            raise TypeError("memory.enforce_runtime must be a boolean")
         for name, value in asdict(self).items():
             if name == "enforce_runtime":
                 continue

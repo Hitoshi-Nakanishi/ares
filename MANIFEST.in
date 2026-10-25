@@ -1,3 +1,5 @@
 include examples/strata.example.json
 include examples/server.example.yaml
 include examples/seccomp-io-uring.json
+include PUBLICATION.md
+include tests/conftest.py
