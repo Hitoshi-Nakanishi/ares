@@ -127,6 +127,7 @@ def test_unavailable_snapshot_does_not_kill_healthy_inference(tmp_path, monkeypa
         lambda **kwargs: SimpleNamespace(resume=lambda process: None, close=lambda: None),
     )
     monkeypatch.setattr(supervisor, "require_memory_headroom", lambda **kwargs: checks.append(kwargs))
+    monkeypatch.setattr(supervisor, "Watchdog", lambda: SimpleNamespace(interval=15, check=lambda: None))
     monkeypatch.setattr(supervisor.subprocess, "Popen", start)
     monkeypatch.setattr(supervisor.psutil, "Process", lambda pid: child)
     monkeypatch.setattr(supervisor, "memory_snapshot", lambda process: {"rss": 2**30, "commit": 90 * 2**30})
@@ -184,6 +185,7 @@ def test_supervisor_stops_tree_at_physical_ram_cutoff(tmp_path, monkeypatch):
     job = SimpleNamespace(resume=lambda process: None, close=lambda: closed.append(True))
     monkeypatch.setattr(supervisor, "WindowsMemoryJob", lambda **kwargs: job)
     monkeypatch.setattr(supervisor, "require_memory_headroom", lambda **kwargs: None)
+    monkeypatch.setattr(supervisor, "Watchdog", lambda: SimpleNamespace(interval=15, check=lambda: None))
     monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *args, **kwargs: child)
     monkeypatch.setattr(supervisor.psutil, "Process", lambda pid: child)
     monkeypatch.setattr(supervisor, "memory_snapshot", lambda process: {"rss": 33 * 2**30, "commit": 90 * 2**30})

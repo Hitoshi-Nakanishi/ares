@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ares.config import MemoryLimits
 from ares.supervisor import supervise
+from ares.watchdog import Watchdog
 
 
 def stop_container(spec):
@@ -42,6 +43,7 @@ def main():
             limits=MemoryLimits(**spec["memory"]),
             environment=environment,
             label=spec["backend"],
+            watchdog=Watchdog(spec["port"] if spec["backend"] in ("vllm", "sglang") else None),
         )
     finally:
         stop_container(spec)

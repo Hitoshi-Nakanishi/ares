@@ -168,8 +168,8 @@ Ollama can offload to RAM when a model does not fit. No model pull is issued. Se
 ## Memory and lifetime
 
 Set `memory.enforce_runtime: false` to give an admitted native service continuous availability without automatic memory
-stops. Startup still checks the configured host RAM and commit headroom. The detached runner then waits for the server;
-it does not poll memory, install a Windows job commit limit, or latch an unexpected exit as a safety pause. Explicit
+stops. Startup still checks the configured host RAM and commit headroom. The detached runner then does not poll memory,
+install a Windows job commit limit, or latch an unexpected exit as a safety pause; the GPU fault stop below still applies. Explicit
 operator stops still require `--resume`. The application owns recovery and must budget lower-priority workloads separately.
 The remaining memory fields describe startup admission when runtime enforcement is disabled, not reserved or enforced RAM.
 Docker backend container limits are independent and still apply.
@@ -233,6 +233,15 @@ container cap and host-available RAM guard apply. Container cleanup verifies an 
 creation time and the runner specification path. The root runner detaches from the invoking execution job. Temporary snapshot
 reader locks cannot kill healthy inference. Protection stops are recorded in `llm-memory.json`; nothing automatically restarts
 or falls back. RAM and GPU are shared with other applications, so these controls do not replace workload validation.
+
+Every 15 seconds the runner also stops the whole server, its Docker container included, once the GPU can no longer finish
+work, so a hung engine does not hold the GPU at full load. On Windows it reads the System log for an NVIDIA driver error
+(`nvlddmkm` events 13, 14 and 153) or a display-driver timeout (`Display` event 4101) newer than the server's start. For vLLM
+and SGLang it also reads `/metrics`: the engine has stalled when requests are running and no engine step, prompt token or output
+token completes for 300 seconds, or when the server stops answering for 300 seconds after it first answered. SGLang exposes
+these metrics only with `--enable-metrics`. The stop is recorded in `llm-memory.json` and latched like a memory stop, so the next
+start needs `--resume`. An unreadable System log or metrics endpoint never stops inference by itself. After a driver fault,
+Docker on WSL can lose GPU access until WSL or Windows restarts; Ares restarts neither.
 
 When a Windows host forbids leaving its job, Ares warns and starts the same runner inside that host job. The configured Ares
 memory supervision still applies, but the host can end the runner when it closes its job. Other launch errors remain errors.

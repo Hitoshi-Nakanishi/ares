@@ -209,3 +209,7 @@ def main(argv=None):
             pass
         time.sleep(3)
     raise SystemExit("Local LLM readiness timed out; no fallback was started")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

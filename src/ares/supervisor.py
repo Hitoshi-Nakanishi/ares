@@ -12,6 +12,7 @@ import psutil
 from ares.config import MemoryLimits
 from ares.inhibition import inhibit
 from ares.resources import require_memory_headroom
+from ares.watchdog import Watchdog
 from ares.windows_memory import WindowsMemoryJob
 
 RAM_LIMIT_GIB = 32
@@ -49,7 +50,7 @@ def save_snapshot(record, snapshot):
     return False
 
 
-def supervise(command, cwd, record, *, limits=None, environment=None, label="Strata"):
+def supervise(command, cwd, record, *, limits=None, environment=None, label="Strata", watchdog=None):
     limits = limits or MemoryLimits()
     job = None
     child = None
@@ -80,23 +81,31 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
         if not limits.enforce_runtime:
             snapshot.update(status="running", pid=child.pid, updated_at=time.time())
             save_snapshot(record, snapshot)
-            result = child.wait()
-            snapshot.update(status="exited", exit_code=result)
-            return result
-        process = psutil.Process(child.pid)
+            if watchdog is None:
+                result = child.wait()
+                snapshot.update(status="exited", exit_code=result)
+                return result
+        process = psutil.Process(child.pid) if limits.enforce_runtime else None
+        watched_at = time.monotonic()
         while child.poll() is None:
-            usage = memory_snapshot(process)
-            peak_rss = max(peak_rss, usage["rss"])
-            peak_commit = max(peak_commit, usage["commit"])
-            snapshot.update(usage, status="running", updated_at=time.time(), peak_rss=peak_rss, peak_commit=peak_commit)
-            if usage["rss"] > limits.ram_gib * 2**30:
-                raise MemoryError(f"{label} physical RAM exceeded {limits.ram_gib} GiB")
-            snapshot["host_memory"] = require_memory_headroom(
-                available_gib=limits.available_gib, commit_gib=limits.free_commit_gib
-            )
-            if not save_snapshot(record, snapshot) and time.monotonic() - last_snapshot_warning >= 30:
-                print(f"{label} memory snapshot unavailable; live memory limits remain active", flush=True)
-                last_snapshot_warning = time.monotonic()
+            if process is not None:
+                usage = memory_snapshot(process)
+                peak_rss = max(peak_rss, usage["rss"])
+                peak_commit = max(peak_commit, usage["commit"])
+                snapshot.update(
+                    usage, status="running", updated_at=time.time(), peak_rss=peak_rss, peak_commit=peak_commit
+                )
+                if usage["rss"] > limits.ram_gib * 2**30:
+                    raise MemoryError(f"{label} physical RAM exceeded {limits.ram_gib} GiB")
+                snapshot["host_memory"] = require_memory_headroom(
+                    available_gib=limits.available_gib, commit_gib=limits.free_commit_gib
+                )
+                if not save_snapshot(record, snapshot) and time.monotonic() - last_snapshot_warning >= 30:
+                    print(f"{label} memory snapshot unavailable; live memory limits remain active", flush=True)
+                    last_snapshot_warning = time.monotonic()
+            if watchdog is not None and time.monotonic() - watched_at >= watchdog.interval:
+                watchdog.check()
+                watched_at = time.monotonic()
             time.sleep(0.5)
         result = child.returncode
         snapshot["status"] = "exited"
@@ -105,7 +114,7 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
         snapshot.update(status="stopped", error=str(exc))
         print(f"{label} supervisor stopped inference: {exc}", flush=True)
     finally:
-        if result != 0 and (limits.enforce_runtime or child is None):
+        if result != 0 and (limits.enforce_runtime or child is None or "error" in snapshot):
             try:
                 inhibit(record.parent, snapshot.get("error", f"Inference exited with code {result}"))
             except OSError as exc:
@@ -149,7 +158,7 @@ def main(argv=None):
         "--port",
         str(args.port),
     ]
-    return supervise(command, root, root / "strata-memory.json")
+    return supervise(command, root, root / "strata-memory.json", watchdog=Watchdog())
 
 
 if __name__ == "__main__":
