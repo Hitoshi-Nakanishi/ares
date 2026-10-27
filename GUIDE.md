@@ -122,6 +122,30 @@ and runs inside it: closing that parent job can end inference.
 
 ## Application startup
 
+### Automatic recovery
+
+For a vLLM or SGLang profile, enable recovery explicitly in the private YAML:
+
+```yaml
+recovery:
+  enabled: true
+  cooldown_seconds: 300
+  window_seconds: 3600
+  max_attempts: 3
+```
+
+A host scheduler can call `python -m ares recover --config private/server.yaml --wait 5`. This action resumes only recorded
+driver faults, stalled engines or failed processes. It checks that `nvidia-smi` responds, waits after a failure and between
+attempts, and records the attempt before starting the same model. The attempt history survives scheduler and process restarts.
+Startup memory reserves and process/container ownership checks still apply. An operator stop, memory protection stop,
+unreadable state or exhausted attempt budget is left paused. Ordinary `autostart` continues to respect every pause.
+
+Recovery restarts the managed inference server. It does not reboot the host, reset a display adapter, alter driver settings,
+restart Docker or select another backend. A GPU that remains unresponsive requires operator diagnosis. Ares installs no
+recurring task itself; the host application owns its scheduler and any retries of application work.
+
+### Guarded startup
+
 Call `autostart` after your application's other services are ready. It preserves a ready server and skips successfully when
 memory headroom is insufficient or unreadable, or no YAML profile is selected. Configuration and ownership errors still fail. It
 does not lower reserves or retry; your application owns login triggers, scheduling and any later retry.

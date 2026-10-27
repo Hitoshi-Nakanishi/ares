@@ -15,7 +15,7 @@ from ares.windows_memory import WindowsMemoryJob
 
 
 @pytest.mark.parametrize("exit_code", [0, 3])
-def test_disabled_runtime_limits_wait_without_monitoring_or_inhibiting(tmp_path, monkeypatch, exit_code):
+def test_disabled_runtime_limits_record_failed_processes_without_memory_monitoring(tmp_path, monkeypatch, exit_code):
     class Child:
         pid = 10
 
@@ -45,7 +45,10 @@ def test_disabled_runtime_limits_wait_without_monitoring_or_inhibiting(tmp_path,
     assert state["enforce_runtime"] is False
     assert state["job_commit_limit_gib"] is None
     assert state["exit_code"] == exit_code
-    assert not (tmp_path / "llm-paused.json").exists()
+    pause = tmp_path / "llm-paused.json"
+    assert pause.exists() is (exit_code != 0)
+    if exit_code:
+        assert json.loads(pause.read_text())["reason"] == f"Inference exited with code {exit_code}"
 
 
 def test_memory_snapshot_separates_physical_ram_and_commit():

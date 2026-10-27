@@ -52,8 +52,10 @@ Use `--config <profile>` with each command, or set `LOCAL_LLM_CONFIG` once.
 | `restart` | Apply configuration changes by stopping and starting |
 | `plan` | Validate the profile and preview the launch command |
 | `autostart` | Start if memory permits; otherwise skip without retrying |
+| `recover` | Retry eligible failures under an explicitly enabled, bounded recovery policy |
 
-After `stop` or a protection trip, inspect the reason, then explicitly resume:
+After `stop` or a protection trip, inspect the reason, then explicitly resume. An opt-in [recovery policy](GUIDE.md#automatic-recovery)
+can retry driver faults and stalled or failed engines; operator and memory stops remain paused.
 
 ```sh
 python -m ares start --resume --config private/server.yaml

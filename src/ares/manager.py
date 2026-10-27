@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -12,9 +13,10 @@ import httpx
 import psutil
 
 from ares.backends import build_spec
-from ares.config import BACKENDS, load_profile
+from ares.config import BACKENDS, RecoveryPolicy, load_profile
 from ares.inhibition import inhibit
 from ares.lifecycle import claim_start, launch_background, wait_for_exit
+from ares.recovery import record_attempt, recovery_blocker
 from ares.resources import require_memory_headroom
 from ares.runner import stop_container
 
@@ -73,7 +75,10 @@ def stop(record):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("start", "autostart", "stop", "restart", "status", "plan"), nargs="?", default="start"
+        "action",
+        choices=("start", "autostart", "recover", "stop", "restart", "status", "plan"),
+        nargs="?",
+        default="start",
     )
     parser.add_argument("--config", type=Path, default=os.getenv("LOCAL_LLM_CONFIG"))
     parser.add_argument("--backend", choices=BACKENDS)
@@ -85,7 +90,8 @@ def main(argv=None):
     if args.resume and args.action not in {"start", "restart"}:
         parser.error("--resume requires explicit start or restart")
     autostart = args.action == "autostart"
-    if autostart:
+    recovering = args.action == "recover"
+    if autostart or recovering:
         args.action = "start"
     if args.config is None:
         if autostart:
@@ -93,6 +99,10 @@ def main(argv=None):
             return 0
         raise SystemExit("Set LOCAL_LLM_CONFIG or pass --config with a private YAML profile")
     profile = load_profile(args.config, args.backend, resolve_settings=args.action != "stop")
+    policy = RecoveryPolicy(**profile["recovery"])
+    if recovering and not policy.enabled:
+        print("Ares recovery skipped: automatic recovery is not enabled")
+        return 0
     spec = build_spec(profile) if args.action != "stop" else None
     state = Path(profile["state_dir"])
     if args.action == "plan":
@@ -103,7 +113,9 @@ def main(argv=None):
         raise SystemExit("Local LLM lifecycle operation already in progress")
     pid_file = state / "llm-server.pid.json"
     record = json.loads(pid_file.read_text()) if pid_file.exists() else {}
-    fingerprint = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
+    fingerprint = hashlib.sha256(
+        json.dumps({k: v for k, v in profile.items() if k != "recovery"}, sort_keys=True).encode()
+    ).hexdigest()
     process = owned_process(record) if record else None
     pause = state / "llm-paused.json"
     if args.action == "stop":
@@ -118,10 +130,23 @@ def main(argv=None):
         ):
             inhibit(state, "Managed inference exited; inspect logs before explicit start --resume")
         if pause.exists() and not args.resume:
-            if autostart:
+            if recovering:
+                if process is not None:
+                    print("Ares recovery skipped: the previous managed process is still running")
+                    return 0
+                try:
+                    blocker = recovery_blocker(state, json.loads(pause.read_text()), policy, time.time())
+                except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+                    raise SystemExit(f"Cannot establish recovery eligibility: {exc}") from exc
+                if blocker:
+                    print(f"Ares recovery skipped: {blocker}")
+                    return 0
+                args.resume = True
+            elif autostart:
                 print(f"Ares autostart skipped: inference is paused ({pause})")
                 return 0
-            raise SystemExit(f"Inference is paused; inspect {pause} and use start --resume explicitly")
+            else:
+                raise SystemExit(f"Inference is paused; inspect {pause} and use start --resume explicitly")
     if args.action in ("stop", "restart"):
         stop(record)
         pid_file.unlink(missing_ok=True)
@@ -157,6 +182,9 @@ def main(argv=None):
         print(f"Local LLM ready: {spec['backend']} http://127.0.0.1:{spec['port']}/v1 model={spec['model']}")
         return 0
     if process is None:
+        if recovering and not args.resume:
+            print("Ares recovery skipped: no recoverable stop is recorded; use start or autostart")
+            return 0
         import socket
 
         with socket.socket() as connection:
@@ -177,6 +205,8 @@ def main(argv=None):
         spec_path = state / "llm-launch.json"
         spec_path.write_text(json.dumps(spec), encoding="utf-8")
         with (state / "llm-server.out.log").open("a", encoding="utf-8") as stream:
+            if recovering:
+                record_attempt(state, policy, time.time())
             if args.resume:
                 pause.unlink(missing_ok=True)
             try:

@@ -114,7 +114,7 @@ def supervise(command, cwd, record, *, limits=None, environment=None, label="Str
         snapshot.update(status="stopped", error=str(exc))
         print(f"{label} supervisor stopped inference: {exc}", flush=True)
     finally:
-        if result != 0 and (limits.enforce_runtime or child is None or "error" in snapshot):
+        if result != 0:
             try:
                 inhibit(record.parent, snapshot.get("error", f"Inference exited with code {result}"))
             except OSError as exc:

@@ -12,6 +12,23 @@ BACKENDS = ("strata", "vllm", "ollama", "sglang")
 
 
 @dataclass(frozen=True)
+class RecoveryPolicy:
+    enabled: bool = False
+    cooldown_seconds: int = 300
+    window_seconds: int = 3600
+    max_attempts: int = 3
+
+    def __post_init__(self):
+        if not isinstance(self.enabled, bool):
+            raise TypeError("recovery.enabled must be a boolean")
+        for name, value in asdict(self).items():
+            if name != "enabled" and (isinstance(value, bool) or not isinstance(value, int) or value <= 0):
+                raise ValueError(f"recovery.{name} must be a positive integer")
+        if self.cooldown_seconds > self.window_seconds:
+            raise ValueError("Recovery cooldown must fit inside its attempt window")
+
+
+@dataclass(frozen=True)
 class MemoryLimits:
     enforce_runtime: bool = True
     ram_gib: float = 32
@@ -57,7 +74,7 @@ def load_profile(path, backend=None, *, resolve_settings=True):
     path = Path(path).resolve()
     data = checked(
         yaml.safe_load(path.read_text(encoding="utf-8-sig")),
-        ("version", "backend", "host", "port", "state_dir", "memory", "backends"),
+        ("version", "backend", "host", "port", "state_dir", "memory", "backends", "recovery"),
         "profile",
     )
     if data.get("version", 1) != 1 or data.get("host", "127.0.0.1") != "127.0.0.1":
@@ -69,6 +86,9 @@ def load_profile(path, backend=None, *, resolve_settings=True):
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
         raise ValueError("port must be an integer between 1 and 65535")
     memory = MemoryLimits(**checked(data.get("memory", {}), (f.name for f in fields(MemoryLimits)), "memory"))
+    recovery = RecoveryPolicy(**checked(data.get("recovery", {}), (f.name for f in fields(RecoveryPolicy)), "recovery"))
+    if recovery.enabled and selected not in ("vllm", "sglang"):
+        raise ValueError("Automatic recovery is supported only for vllm and sglang profiles")
     backends = checked(data.get("backends", {}), BACKENDS, "backends")
     settings = expand(backends.get(selected, {})) if resolve_settings else {}
     state_dir = Path(expand(data.get("state_dir", ".local"))).expanduser()
@@ -80,4 +100,5 @@ def load_profile(path, backend=None, *, resolve_settings=True):
         "state_dir": str(state_dir.resolve()),
         "memory": asdict(memory),
         "settings": settings,
+        "recovery": asdict(recovery),
     }
