@@ -62,7 +62,7 @@ def load_profile(path, backend=None, *, resolve_settings=True):
     )
     if data.get("version", 1) != 1 or data.get("host", "127.0.0.1") != "127.0.0.1":
         raise ValueError("Only version 1 and IPv4 loopback are supported")
-    selected = backend or data.get("backend", "strata")
+    selected = backend or data.get("backend", "vllm")
     if selected not in BACKENDS:
         raise ValueError(f"backend must be one of {', '.join(BACKENDS)}")
     port = data.get("port", 54321)

@@ -1,14 +1,16 @@
 # Ares
 
-[![Tests and distribution](https://github.com/Hitoshi-Nakanishi/ares/actions/workflows/tests.yml/badge.svg)](https://github.com/Hitoshi-Nakanishi/ares/actions/workflows/tests.yml)
-[![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FHitoshi-Nakanishi%2Fares%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version)](pyproject.toml)
+[![Tests and distribution](https://github.com/Hitoshi-Nakanishi/ares/actions/workflows/tests.yml/badge.svg)](
+https://github.com/Hitoshi-Nakanishi/ares/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FHitoshi-Nakanishi%2Fares%2Fmain%2Fpyproject.toml&query=%24.project.version&label=version)
+](pyproject.toml)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Ares manages a workstation's GPU inference servers.
 
-Local-only launch and memory supervision for **Strata (default)**, **vLLM**, **SGLang**, and **Ollama**. This is server
+Local-only launch and memory supervision for **vLLM (default)**, **Strata**, **SGLang**, and **Ollama**. This is server
 management, not an agent framework or inference engine. Model weights, credentials, application workflows and databases are
 excluded. There is no automatic fallback, model download, external listener or boot task. Strata and Ollama run natively on
 Windows; vLLM uses an already installed GPU Docker image or a native Linux installation; SGLang uses an already installed GPU
@@ -28,7 +30,8 @@ itself. Clients talk to the selected engine directly on the loopback port.
 ## Install and run
 
 Use Python 3.11 or newer. Install the selected engine and model separately. Copy `examples/server.example.yaml` to an ignored or
-external private location. Set its paths and model names, or supply its `${VARIABLE}` values through the environment.
+external private location. The example selects vLLM in Docker; set `VLLM_IMAGE`, `VLLM_MODEL_PATH` and `VLLM_MODEL`, or replace
+their `${VARIABLE}` placeholders with local values. The image and model must already be installed.
 
 ```powershell
 python -m venv .venv
@@ -71,12 +74,12 @@ Another project can invoke the same interpreter and module with absolute paths a
 its child process. Its application startup can call `start` repeatedly with the same profile without creating duplicate servers.
 Ares itself does not install a Windows boot task or restart after a memory-protection stop.
 
-`stop`, a supervised failure, or an unexpected exit of a recorded runner inhibits subsequent starts using
-`llm-paused.json` in the selected state directory. Ordinary `start` and `restart` refuse; `autostart` skips. Inspect the reason
-and host health before explicitly using `start --resume` or `restart --resume`. `autostart` rejects `--resume`.
-The startup memory checks still apply, and an insufficient reserve leaves the pause intact. Resuming does not authorize an
-application to resume its report queue or periodic maintenance. The Windows job enforces below-normal CPU priority throughout
-the native process tree in addition to its aggregate committed-memory limit; RSS remains a separately sampled cutoff.
+`stop`, a supervised failure, or an unexpected exit of a recorded runner inhibits subsequent starts using `llm-paused.json` in
+the selected state directory. Ordinary `start` and `restart` refuse; `autostart` skips. Inspect the reason and host health
+before explicitly using `start --resume` or `restart --resume`. `autostart` rejects `--resume`. The startup memory checks still
+apply, and an insufficient reserve leaves the pause intact. Resuming does not authorize an application to resume its report
+queue or periodic maintenance. The Windows job enforces below-normal CPU priority throughout the native process tree in addition
+to its aggregate committed-memory limit; RSS remains a separately sampled cutoff.
 
 For host-application startup, use `autostart` after the application's other services are ready:
 
@@ -98,10 +101,10 @@ or tunnel is installed.
 
 ## Backend settings
 
-Edit the top-level `backend` field in the private YAML. Choose exactly one of these values, then run `restart`:
+The private YAML defaults to vLLM when its top-level `backend` field is omitted. The example selects it explicitly:
 
 ```yaml
-backend: strata
+backend: vllm
 ```
 
 | Value | Required backend configuration |
@@ -111,7 +114,7 @@ backend: strata
 | `sglang` | `backends.sglang.image`, `model_path` and `model`, identifying a local Docker image, model directory and served model name |
 | `ollama` | `backends.ollama.executable` and `model`, identifying an installed executable and an already installed model |
 
-For example, replace `backend: strata` with `backend: ollama` and run:
+To select another engine, set `backend` explicitly. For example, replace `backend: vllm` with `backend: ollama` and run:
 
 ```powershell
 & $python -m ares plan --config $config
@@ -139,20 +142,21 @@ utilization (0.9 by default), context, sequences and CPU offload. Concurrency de
 optional `swap_space_gib` passes the legacy `--swap-space` flag only when explicitly configured; current vLLM versions no longer
 expose that flag, so the default profile omits it. Container OS swap remains disabled independently. A model kept in a Docker
 named volume uses `volume` with `model_path` relative to it; the volume is mounted read-only at `/models`, so weights stay on
-the Linux disk instead of crossing the Windows file share. An absolute `volume` is a directory of the Docker host VM, bound
-the same way; Docker Desktop reaches a directory that a WSL distro bind-mounts under `/mnt/wsl` at `/run/desktop/mnt/host/wsl`. `image_command` goes between the image and the engine arguments
-(for example `[vllm, serve]` for an image whose entrypoint is a launcher), `env` adds container variables, `args` appends engine
-arguments that no YAML field sets, `shm_size_gib` sizes `/dev/shm` (1 GiB by default) and utilization may reach 0.98.
-Docker's default seccomp profile refuses io_uring, which engines that read weights from disk during inference need;
-`seccomp_profile` names a replacement. [`examples/seccomp-io-uring.json`](examples/seccomp-io-uring.json) keeps the syscalls
-Docker documents as blocked by default (mounts, namespaces, tracing, key and kernel-module calls) and allows io_uring. See
+the Linux disk instead of crossing the Windows file share. An absolute `volume` is a directory of the Docker host VM, bound the
+same way; Docker Desktop reaches a directory that a WSL distro bind-mounts under `/mnt/wsl` at `/run/desktop/mnt/host/wsl`.
+`image_command` goes between the image and the engine arguments (for example `[vllm, serve]` for an image whose entrypoint is a
+launcher), `env` adds container variables, `args` appends engine arguments that no YAML field sets, `shm_size_gib` sizes
+`/dev/shm` (1 GiB by default) and utilization may reach 0.98. Docker's default seccomp profile refuses io_uring, which engines
+that read weights from disk during inference need; `seccomp_profile` names a replacement.
+[`examples/seccomp-io-uring.json`](examples/seccomp-io-uring.json) keeps the syscalls Docker documents as blocked by default
+(mounts, namespaces, tracing, key and kernel-module calls) and allows io_uring. See
 [vLLM engine arguments](https://docs.vllm.ai/en/latest/configuration/engine_args/).
 
 SGLang runs only in Docker, with the same rules as vLLM Docker mode: an installed image that is never pulled, a read-only model
 directory or `volume`, a loopback-only port, `memory.ram_gib` as container RAM without swap, offline model loading, and the
 `image_command`, `env`, `args`, `shm_size_gib` and `seccomp_profile` fields. A server image, such as one started with
-`image_command: [python3, -m, sglang.launch_server]`, receives `--model-path`, `--host`, `--port` and `--served-model-name`
-from Ares, and `args` appends further [server arguments](https://docs.sglang.ai/advanced_features/server_arguments.html).
+`image_command: [python3, -m, sglang.launch_server]`, receives `--model-path`, `--host`, `--port` and `--served-model-name` from
+Ares, and `args` appends further [server arguments](https://docs.sglang.ai/advanced_features/server_arguments.html).
 `container_port` is the port the server listens on inside the container, 30000 by default. An image that starts a recipe and
 refuses arguments instead receives the model path in the variable that `model_env` names; its other settings go in `env`, and
 `container_port` and `model` must match the port and model name that the recipe serves. `cache` mounts a Docker volume or a
@@ -167,12 +171,12 @@ Ollama can offload to RAM when a model does not fit. No model pull is issued. Se
 
 ## Memory and lifetime
 
-Set `memory.enforce_runtime: false` to give an admitted native service continuous availability without automatic memory
-stops. Startup still checks the configured host RAM and commit headroom. The detached runner then does not poll memory,
-install a Windows job commit limit, or latch an unexpected exit as a safety pause; the GPU fault stop below still applies. Explicit
-operator stops still require `--resume`. The application owns recovery and must budget lower-priority workloads separately.
-The remaining memory fields describe startup admission when runtime enforcement is disabled, not reserved or enforced RAM.
-Docker backend container limits are independent and still apply.
+Set `memory.enforce_runtime: false` to give an admitted native service continuous availability without automatic memory stops.
+Startup still checks the configured host RAM and commit headroom. The detached runner then does not poll memory, install a
+Windows job commit limit, or latch an unexpected exit as a safety pause; the GPU fault stop below still applies. Explicit
+operator stops still require `--resume`. The application owns recovery and must budget lower-priority workloads separately. The
+remaining memory fields describe startup admission when runtime enforcement is disabled, not reserved or enforced RAM. Docker
+backend container limits are independent and still apply.
 
 Edit the existing top-level `memory` block in the private YAML, then run `plan` and `restart` to apply it. Values are in GiB (1
 GiB = 1,073,741,824 bytes). These are limits and headroom checks, not amounts preallocated at startup.
@@ -216,10 +220,10 @@ Strata `prefill` accepts a numeric chunk size or `auto`. The latter lets the nat
 cache and context. Small fixed chunks can repeatedly stream uncached experts from disk. Keep memory protection enabled and
 verify representative requests and production health after changing this setting; selecting `auto` does not prove throughput.
 
-`expert_cache` accepts an integer expert-blob budget or `auto`. It controls GPU caching separately from
-`resident_budget_gib`, which controls RAM caching. On Windows, GPU allocations also consume job commit: calculate that limit
-from measured allocation and host free commit before increasing this cache. Keep the physical-RAM cutoff and host reserves
-enabled; a larger GPU cache does not authorize consuming that much physical RAM.
+`expert_cache` accepts an integer expert-blob budget or `auto`. It controls GPU caching separately from `resident_budget_gib`,
+which controls RAM caching. On Windows, GPU allocations also consume job commit: calculate that limit from measured allocation
+and host free commit before increasing this cache. Keep the physical-RAM cutoff and host reserves enabled; a larger GPU cache
+does not authorize consuming that much physical RAM.
 
 The Windows supervisor starts the selected process suspended, assigns a kill-on-close job, and resumes it. With the example
 settings, children inherit a 100 GiB aggregate **commit** limit, including Windows GPU backing. Commit is not physical RAM.
@@ -234,29 +238,30 @@ creation time and the runner specification path. The root runner detaches from t
 reader locks cannot kill healthy inference. Protection stops are recorded in `llm-memory.json`; nothing automatically restarts
 or falls back. RAM and GPU are shared with other applications, so these controls do not replace workload validation.
 
-Every 15 seconds the runner also stops the whole server, its Docker container included, once the GPU can no longer finish
-work, so a hung engine does not hold the GPU at full load. On Windows it reads the System log for an NVIDIA driver error
-(`nvlddmkm` events 13, 14 and 153) or a display-driver timeout (`Display` event 4101) newer than the server's start. For vLLM
-and SGLang it also reads `/metrics`: the engine has stalled when requests are running and no engine step, prompt token or output
-token completes for 300 seconds, or when the server stops answering for 300 seconds after it first answered. SGLang exposes
-these metrics only with `--enable-metrics`. The stop is recorded in `llm-memory.json` and latched like a memory stop, so the next
+Every 15 seconds the runner also stops the whole server, its Docker container included, once the GPU can no longer finish work,
+so a hung engine does not hold the GPU at full load. On Windows it reads the System log for an NVIDIA driver error (`nvlddmkm`
+events 13, 14 and 153) or a display-driver timeout (`Display` event 4101) newer than the server's start. For vLLM and SGLang it
+also reads `/metrics`: the engine has stalled when requests are running and no engine step, prompt token or output token
+completes for 300 seconds, or when the server stops answering for 300 seconds after it first answered. SGLang exposes these
+metrics only with `--enable-metrics`. The stop is recorded in `llm-memory.json` and latched like a memory stop, so the next
 start needs `--resume`. An unreadable System log or metrics endpoint never stops inference by itself. After a driver fault,
 Docker on WSL can lose GPU access until WSL or Windows restarts; Ares restarts neither.
 
 When a Windows host forbids leaving its job, Ares warns and starts the same runner inside that host job. The configured Ares
 memory supervision still applies, but the host can end the runner when it closes its job. Other launch errors remain errors.
 
-State, effective configuration, PID/lock records, logs and benchmark outputs stay outside Git. The environment-only Strata
-launch with `STRATA_HOME` and `STRATA_CONFIG` remains available when no YAML profile is selected.
+State, effective configuration, PID/lock records, logs and benchmark outputs stay outside Git. The legacy environment-only
+Strata launch with `STRATA_HOME` and `STRATA_CONFIG` remains available when no YAML profile is selected; it is separate from the
+YAML default. Use a YAML profile through `--config` or `LOCAL_LLM_CONFIG` for vLLM.
 
 ## Performance comparison
 
-Strata is the default operational choice, **not a claim of measured superiority**. Compare identical source weights,
+vLLM is the default backend. This selection does not establish an engine performance ranking. Compare identical source weights,
 quantization, context, sampling, prompts, output budgets, concurrency, cache/warm-up state and hardware. Different models or
 quantization measure different workloads and do not establish which server is faster or better.
 
 ```powershell
-python -m ares.benchmark --config private/server.yaml --output private/strata.csv
+python -m ares.benchmark --config private/server.yaml --output private/vllm.csv
 ```
 
 The benchmark measures only the exact selected, already-running backend and model. It never starts or switches engines. Three
@@ -283,12 +288,13 @@ python -m ruff format --check src tests
 
 Tests use tiny processes and mocked services without a GPU, model, database or credentials. Native Windows job tests skip on
 other operating systems. The [Tests and distribution workflow](.github/workflows/tests.yml) runs these checks, builds and
-installs the package on Windows and Linux with Python 3.11 and 3.14 for every push and pull request. Engine and model licensing remain separate from this launcher.
+installs the package on Windows and Linux with Python 3.11 and 3.14 for every push and pull request. Engine and model licensing
+remain separate from this launcher.
 
 Only generic source, tests, metadata, documentation and examples belong in Git. The allowlist ignore file excludes private YAML,
-`.env`, weights, logs, environments and build products by default. Follow [publication checks](PUBLICATION.md) before publishing;
-ignoring a file cannot sanitize an already tracked secret. An existing process whose ownership cannot be verified must be
-inspected by its operator before stopping it.
+`.env`, weights, logs, environments and build products by default. Follow [publication checks](PUBLICATION.md) before
+publishing; ignoring a file cannot sanitize an already tracked secret. An existing process whose ownership cannot be verified
+must be inspected by its operator before stopping it.
 
 ## License and contributions
 

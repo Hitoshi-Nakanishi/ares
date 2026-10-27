@@ -1,5 +1,5 @@
 version: 1
-backend: strata
+backend: vllm
 host: 127.0.0.1
 port: 54321
 state_dir: .local

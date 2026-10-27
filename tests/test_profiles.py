@@ -30,6 +30,7 @@ def profile_file(tmp_path, **changes):
     native.write_text(json.dumps({"model_name": "local-model", "args": ["--resident-budget-gib", "32"]}))
     data = {
         "version": 1,
+        "backend": "strata",
         "state_dir": "state",
         "backends": {"strata": {"home": str(tmp_path), "config": str(native), "options": {"resident_budget_gib": 8}}},
     }
@@ -192,14 +193,39 @@ def test_autostart_skips_memory_failure_without_launch(tmp_path, monkeypatch, ca
 def test_default_backend_and_inactive_environment_are_safe(tmp_path):
     path = profile_file(tmp_path)
     data = yaml.safe_load(path.read_text())
+    data.pop("backend")
+    data["backends"]["vllm"] = {"model": "local-model"}
+    data["backends"]["strata"] = {"home": "${UNCONFIGURED_INACTIVE_STRATA}"}
     data["backends"]["ollama"] = {"model": "${UNCONFIGURED_INACTIVE_MODEL}"}
     path.write_text(yaml.safe_dump(data))
     profile = load_profile(path)
-    assert profile["backend"] == "strata"
+    assert profile["backend"] == "vllm"
+    assert profile["settings"] == {"model": "local-model"}
     assert profile["memory"]["ram_gib"] == 32
     with pytest.raises(ValueError, match="UNCONFIGURED_INACTIVE_MODEL"):
         load_profile(path, "ollama")
     assert load_profile(path, "ollama", resolve_settings=False)["settings"] == {}
+
+
+@pytest.mark.parametrize("selected", ["strata", "vllm", "sglang", "ollama"])
+def test_explicit_backend_overrides_the_default(tmp_path, selected):
+    path = profile_file(tmp_path, backend=selected)
+    assert load_profile(path)["backend"] == selected
+    assert load_profile(path, "vllm")["backend"] == "vllm"
+    assert load_profile(path, "strata")["backend"] == "strata"
+
+
+def test_example_profile_selects_vllm_without_inactive_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("VLLM_IMAGE", "local-vllm:test")
+    monkeypatch.setenv("VLLM_MODEL_PATH", str(tmp_path))
+    monkeypatch.setenv("VLLM_MODEL", "local-model")
+    for name in ("STRATA_HOME", "STRATA_CONFIG", "SGLANG_IMAGE", "SGLANG_MODEL_PATH", "SGLANG_MODEL", "OLLAMA_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    profile = load_profile(Path(__file__).resolve().parents[1] / "examples/server.example.yaml")
+    spec = build_spec(profile)
+    assert spec["backend"] == "vllm"
+    assert spec["model"] == "local-model"
+    assert spec["command"][:2] == ["docker", "run"]
 
 
 @pytest.mark.parametrize(
