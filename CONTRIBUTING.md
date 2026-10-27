@@ -1,8 +1,7 @@
 # Contributing
 
-Ares accepts focused bug reports and pull requests. Describe the expected behavior, what happened, and how to reproduce it.
-Use fictional examples. Never attach private workbooks, configurations, source identities, personal data, credentials or logs
-containing them. An ignored file may still leak when attached to an issue.
+Ares welcomes focused bug reports and pull requests. Include the expected result, actual result, reproduction steps, OS and
+Python version. Use fictional examples and remove private data, paths and credentials from attachments.
 
 ## Development
 
@@ -15,10 +14,11 @@ python -m ruff check src tests
 python -m ruff format --check src tests
 ```
 
-Keep changes small and add behavior coverage for a bug fix. Tests must not depend on credentials, private data, installed
-models or a live inference server. Include the operating system and Python version when reporting a failure.
+Keep changes small and cover changed behavior with tests. Tests use mocks and tiny processes, without a GPU, installed models,
+private data or a live inference server. Windows-specific tests skip on other systems.
 
-The maintainer runs the private checks in [PUBLICATION.md](PUBLICATION.md) before publishing. Contributors do not need the
-maintainer's private policy to install the application or run its tests. Never bypass a maintainer's configured Git hook.
+For a submodule checkout, commit in Ares first, then update the parent repository's pointer. Keep its virtual environment in the
+Ares checkout.
 
-Contributions are provided under the project's [MIT License](LICENSE). Dependencies retain their own licenses.
+The maintainer runs [publication checks](PUBLICATION.md); contributors do not need the private policy. Keep configured Git hooks
+enabled. Contributions use the [MIT License](LICENSE); dependencies retain their own licenses.

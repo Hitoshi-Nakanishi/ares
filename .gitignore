@@ -2,6 +2,7 @@
 !/.gitignore
 !/.gitattributes
 !/README.md
+!/GUIDE.md
 !/pyproject.toml
 !/MANIFEST.in
 !/AGENTS.md
