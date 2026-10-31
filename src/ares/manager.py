@@ -18,7 +18,7 @@ from ares.inhibition import inhibit
 from ares.lifecycle import claim_start, launch_background, wait_for_exit
 from ares.recovery import record_attempt, recovery_blocker
 from ares.resources import require_memory_headroom
-from ares.runner import stop_container
+from ares.runner import stop_container, wait_for_removal
 
 
 def owned_process(record):
@@ -201,6 +201,11 @@ def main(argv=None):
                 print(f"Ares autostart skipped: {exc}")
                 return 0
             raise SystemExit(str(exc)) from exc
+        if spec.get("docker_name"):
+            try:
+                wait_for_removal(spec["docker_name"])
+            except RuntimeError as exc:
+                raise SystemExit(f"{exc}; inspect or remove it before starting") from exc
         spec = build_spec(profile, materialize=True)
         spec_path = state / "llm-launch.json"
         spec_path.write_text(json.dumps(spec), encoding="utf-8")

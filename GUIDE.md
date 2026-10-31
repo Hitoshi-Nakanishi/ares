@@ -117,7 +117,8 @@ for that long after readiness, also trigger a stop. SGLang needs `--enable-metri
 stop inference. Ares never restarts Docker, WSL or Windows after a fault.
 
 Logs, PID records and `llm-memory.json` stay in the private state directory. Ownership is verified before stopping a process or
-container; inspect an unverifiable process manually. If Windows prevents the runner from leaving the caller's job, Ares warns
+container; inspect an unverifiable process manually. A stop returns once Docker has removed the container, and a start waits up
+to 60 seconds for a container of the same name to go, then refuses without pausing inference. If Windows prevents the runner from leaving the caller's job, Ares warns
 and runs inside it: closing that parent job can end inference.
 
 ## Application startup

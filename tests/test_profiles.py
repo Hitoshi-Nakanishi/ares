@@ -354,6 +354,35 @@ def test_container_cleanup_never_stops_an_unowned_container(monkeypatch):
     assert len(calls) == 1
 
 
+def test_container_cleanup_returns_only_once_docker_has_removed_the_container(monkeypatch):
+    calls = []
+    present = iter([True, True, True, False])
+
+    def run(command, **kwargs):
+        calls.append(command[1])
+        if command[1] == "stop":
+            return SimpleNamespace(returncode=0)
+        if next(present):
+            return SimpleNamespace(returncode=0, stdout="expected-owner", stderr="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="Error: No such object: ares-vllm")
+
+    monkeypatch.setattr(runner.subprocess, "run", run)
+    monkeypatch.setattr(runner.time, "sleep", lambda _seconds: None)
+    runner.stop_container({"docker_name": "ares-vllm", "docker_owner": "expected-owner"})
+    assert calls == ["inspect", "stop", "inspect", "inspect", "inspect"]
+
+
+def test_waiting_for_a_container_that_stays_fails_after_its_bound(monkeypatch):
+    clock = iter(range(0, 1000, 30))
+    monkeypatch.setattr(
+        runner.subprocess, "run", lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="other", stderr="")
+    )
+    monkeypatch.setattr(runner.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(runner.time, "sleep", lambda _seconds: None)
+    with pytest.raises(RuntimeError, match="still present after 60 seconds"):
+        runner.wait_for_removal("ares-vllm")
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows job cap and physical memory override")
 def test_memory_override_is_used_by_live_supervision(tmp_path, monkeypatch):
     class Child:
