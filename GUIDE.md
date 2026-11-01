@@ -43,6 +43,7 @@ only for older engines supporting `--swap-space`; omit it for current versions. 
 | `args` | Engine arguments not already set by YAML fields |
 | `shm_size_gib` | Shared memory size; defaults to 1 GiB |
 | `seccomp_profile` | Optional seccomp JSON for engines needing io_uring |
+| `cache_dir` | vLLM in Docker: absolute Docker-host directory mounted read-write at `/root/.cache`, so compile caches survive a restart |
 
 Docker Desktop can bind a WSL directory shared under `/mnt/wsl` through `/run/desktop/mnt/host/wsl`. This keeps weights on the
 Linux disk rather than the Windows file share. The [io_uring profile](examples/seccomp-io-uring.json) allows those calls while

@@ -185,6 +185,7 @@ def build_spec(profile, *, materialize=False):
                 "swap_space_gib",
                 "shm_size_gib",
                 "seccomp_profile",
+                "cache_dir",
                 "env",
                 "args",
             ),
@@ -194,6 +195,12 @@ def build_spec(profile, *, materialize=False):
         if settings.get("volume") and mode != "docker":
             raise ValueError("vllm.volume needs docker mode")
         mount, container_model = model_mount(settings, "vllm")
+        mounts = [mount]
+        if cache_dir := settings.get("cache_dir"):
+            if mode != "docker" or not cache_dir.startswith("/"):
+                raise ValueError("vllm.cache_dir needs docker mode and an absolute directory of the Docker host VM")
+            # The compile, Triton and FlashInfer caches outlive the --rm container, so a restart skips recompiling.
+            mounts.append(f"{docker_source(cache_dir, 'vllm.cache_dir')},target=/root/.cache")
         environment = container_environment(
             settings,
             "vllm",
@@ -229,7 +236,7 @@ def build_spec(profile, *, materialize=False):
         spec.update(model=settings["model"], env=environment)
         if mode == "docker":
             spec["command"] = [
-                *docker_run(spec, settings, [mount], 8000, materialize=materialize),
+                *docker_run(spec, settings, mounts, 8000, materialize=materialize),
                 "--model",
                 container_model,
                 "--host",
