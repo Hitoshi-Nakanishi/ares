@@ -379,7 +379,7 @@ def test_waiting_for_a_container_that_stays_fails_after_its_bound(monkeypatch):
     )
     monkeypatch.setattr(runner.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(runner.time, "sleep", lambda _seconds: None)
-    with pytest.raises(RuntimeError, match="still present after 60 seconds"):
+    with pytest.raises(RuntimeError, match="still present after 180 seconds"):
         runner.wait_for_removal("ares-vllm")
 
 

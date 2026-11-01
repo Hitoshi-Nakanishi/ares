@@ -12,7 +12,8 @@ from ares.supervisor import supervise
 from ares.watchdog import Watchdog
 
 
-REMOVAL_SECONDS = 60
+# Stopping a 27B server with requests in flight and removing its container can take over two minutes.
+REMOVAL_SECONDS = 180
 
 
 def container_owner(name):
@@ -50,7 +51,10 @@ def stop_container(spec):
     if owner != spec.get("docker_owner"):
         raise RuntimeError("Refusing to stop an unrelated Docker container")
     subprocess.run(
-        ["docker", "stop", "--time", "10", spec["docker_name"]], check=True, stdout=subprocess.DEVNULL, timeout=30
+        ["docker", "stop", "--time", "10", spec["docker_name"]],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        timeout=REMOVAL_SECONDS,
     )
     wait_for_removal(spec["docker_name"])
 
