@@ -175,6 +175,17 @@ saved default need `codex-app on`, which makes the served model the Codex defaul
 previous default in the state directory; `codex-app off` restores it and `codex-app status` prints it. Restart the app after a
 switch.
 
+OpenCode lists models from several providers in one picker, so its desktop app can switch between a signed-in hosted plan and
+the served model. `install opencode` installs the desktop app with winget on Windows (package `Anomaly.OpenCode.Desktop`).
+`opencode-app on` adds an `ares` provider with the served model and its context length to `~/.config/opencode/opencode.json`
+(under `XDG_CONFIG_HOME` when set), keeping every other key; `opencode-app off` removes it and `opencode-app status` reports it.
+A config with comments is left alone. Reopen the app after a change.
+
+```sh
+python -m ares coder install opencode
+python -m ares coder --config private/server.yaml opencode-app on
+```
+
 The engine must parse tool calls: for vLLM add `--enable-auto-tool-choice` and the model's `--tool-call-parser` to `args`.
 `--effort` (default `medium`) is sent as Claude's effort and Codex's reasoning effort; engines with a reasoning parser may
 refuse `high`. Agent requests share the KV cache and generation throughput with every other client of the server, and their

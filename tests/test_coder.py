@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import yaml
 
@@ -82,6 +84,37 @@ def test_codex_app_switches_the_default_and_restores_it(profile, calls, tmp_path
     assert (home / "config.toml").read_text() == original
     with pytest.raises(SystemExit, match="nothing to restore"):
         coder.main(["--config", str(profile), "codex-app", "off"])
+
+
+def test_opencode_app_adds_and_removes_only_its_provider(profile, calls, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    config = tmp_path / "xdg" / "opencode" / "opencode.json"
+    config.parent.mkdir(parents=True)
+    other = {"name": "Other", "models": {"m": {}}}
+    config.write_text(json.dumps({"model": "ares/old", "providers": {"other": other}, "theme": "dark"}))
+    assert coder.main(["--config", str(profile), "opencode-app", "on"]) == 0
+    switched = json.loads(config.read_text())
+    assert switched["providers"]["other"] == other
+    assert switched["providers"]["ares"]["settings"]["baseURL"] == "http://127.0.0.1:54321/v1"
+    assert list(switched["providers"]["ares"]["models"]) == ["local-model"]
+    assert coder.main(["--config", str(profile), "opencode-app", "off"]) == 0
+    assert json.loads(config.read_text()) == {"providers": {"other": other}, "theme": "dark"}
+
+
+def test_opencode_app_leaves_a_commented_config_alone(profile, calls, tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    config = tmp_path / "opencode" / "opencode.json"
+    config.parent.mkdir()
+    config.write_text('{\n  // mine\n  "theme": "dark"\n}\n')
+    with pytest.raises(SystemExit, match="not plain JSON"):
+        coder.main(["--config", str(profile), "opencode-app", "on"])
+    assert "// mine" in config.read_text()
+
+
+def test_install_opencode_uses_the_pinned_winget_package(calls, monkeypatch):
+    monkeypatch.setattr(coder.os, "name", "nt")
+    assert coder.main(["install", "opencode"]) == 0
+    assert calls[0][0][:5] == ["winget", "install", "--id", "Anomaly.OpenCode.Desktop", "--exact"]
 
 
 def test_codex_app_requires_one_switch(profile):

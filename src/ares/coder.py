@@ -1,7 +1,8 @@
 """Run coding agents on the server a profile describes; this command never starts or stops the server.
 
 `claude` and `codex` start one agent session with the served model, `codex-app on` makes it the Codex default (the Codex app
-reads only that) and `codex-app off` restores the default saved by `on`.
+reads only that) and `codex-app off` restores the default saved by `on`. `opencode-app on` adds the served model to OpenCode's
+model list beside its other providers, `off` removes it, and `install opencode` installs the OpenCode desktop app.
 """
 
 import argparse
@@ -19,6 +20,7 @@ from ares.config import load_profile
 from ares.manager import readiness
 
 PROVIDER = "ares"
+OPENCODE_PACKAGE = "Anomaly.OpenCode.Desktop"
 DEFAULT_KEY = re.compile(r"\s*(model|model_provider)\s*=")
 TABLE = re.compile(r"\s*\[")
 
@@ -113,6 +115,49 @@ def codex_app(spec, state, switch):
     return 0
 
 
+def opencode_app(profile, spec, switch):
+    config = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config")) / "opencode" / "opencode.json"
+    try:
+        data = json.loads(config.read_text(encoding="utf-8")) if config.exists() else {}
+    except ValueError as exc:
+        raise SystemExit(f"{config} is not plain JSON; add the {PROVIDER} provider by hand") from exc
+    providers = data.setdefault("providers", {})
+    if switch == "status":
+        print(
+            f"{PROVIDER} provider {'present' if PROVIDER in providers else 'absent'}; model {data.get('model', 'unset')}"
+        )
+        return 0
+    if switch == "on":
+        model = {"name": f"{spec['model']} (Ares)"}
+        if context := profile["settings"].get("max_model_len"):
+            model["limit"] = {"context": context}
+        providers[PROVIDER] = {
+            "name": "Ares",
+            "package": "@opencode/ai/providers/openai-compatible",
+            "settings": {"baseURL": f"http://127.0.0.1:{spec['port']}/v1"},
+            "models": {spec["model"]: model},
+        }
+    else:
+        providers.pop(PROVIDER, None)
+        if str(data.get("model", "")).startswith(f"{PROVIDER}/"):
+            del data["model"]
+    if not providers:
+        del data["providers"]
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    print(f"OpenCode {PROVIDER} provider {switch}: {config}; reopen the OpenCode app to apply it")
+    return 0
+
+
+def install(target):
+    if os.name != "nt":
+        raise SystemExit(f"Install {target} from https://opencode.ai; this command uses winget on Windows")
+    return run(
+        ["winget", "install", "--id", OPENCODE_PACKAGE, "--exact"]
+        + ["--accept-package-agreements", "--accept-source-agreements"]
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="ares coder",
@@ -121,19 +166,26 @@ def main(argv=None):
     )
     parser.add_argument("--config", type=Path, default=os.getenv("LOCAL_LLM_CONFIG"))
     parser.add_argument("--effort", choices=("low", "medium", "high"), default="medium")
-    parser.add_argument("agent", choices=("claude", "codex", "codex-app"))
+    parser.add_argument("agent", choices=("claude", "codex", "codex-app", "opencode-app", "install"))
     parser.add_argument("rest", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
+    if args.agent == "install":
+        if args.rest != ["opencode"]:
+            parser.error("install takes opencode")
+        return install(args.rest[0])
     if args.config is None:
         raise SystemExit("Set LOCAL_LLM_CONFIG or pass --config with a private YAML profile")
-    if args.agent == "codex-app":
+    if args.agent in ("codex-app", "opencode-app"):
         if args.rest not in (["on"], ["off"], ["status"]):
-            parser.error("codex-app takes exactly one of on, off or status")
+            parser.error(f"{args.agent} takes exactly one of on, off or status")
         switch = args.rest[0]
-        if switch != "on":
+        if switch == "on":
+            profile, spec = served(args.config)
+        else:
             profile = load_profile(args.config)
-            return codex_app(build_spec(profile), Path(profile["state_dir"]), switch)
-        profile, spec = served(args.config)
+            spec = build_spec(profile)
+        if args.agent == "opencode-app":
+            return opencode_app(profile, spec, switch)
         return codex_app(spec, Path(profile["state_dir"]), switch)
     _, spec = served(args.config)
     if args.agent == "claude":

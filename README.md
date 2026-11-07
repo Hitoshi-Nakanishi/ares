@@ -55,6 +55,7 @@ Use `--config <profile>` with each command, or set `LOCAL_LLM_CONFIG` once.
 | `recover` | Retry eligible failures under an explicitly enabled, bounded recovery policy |
 | `coder claude` / `coder codex` | Run Claude Code or Codex on the served model; see [coding agents](GUIDE.md#coding-agents) |
 | `coder codex-app on` / `off` | Make the served model the Codex default, or restore the previous default |
+| `coder opencode-app on` / `off` | Add the served model to OpenCode's model list, or remove it; `coder install opencode` installs the app |
 
 After `stop` or a protection trip, inspect the reason, then explicitly resume. An opt-in [recovery policy](GUIDE.md#automatic-recovery)
 can retry driver faults and stalled or failed engines; operator and memory stops remain paused.
