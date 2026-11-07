@@ -137,6 +137,7 @@ def opencode_app(profile, spec, switch):
             "settings": {"baseURL": f"http://127.0.0.1:{spec['port']}/v1"},
             "models": {spec["model"]: model},
         }
+        data.setdefault("model", f"{PROVIDER}/{spec['model']}")
     else:
         providers.pop(PROVIDER, None)
         if str(data.get("model", "")).startswith(f"{PROVIDER}/"):

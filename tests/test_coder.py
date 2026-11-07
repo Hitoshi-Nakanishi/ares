@@ -91,9 +91,10 @@ def test_opencode_app_adds_and_removes_only_its_provider(profile, calls, tmp_pat
     config = tmp_path / "xdg" / "opencode" / "opencode.json"
     config.parent.mkdir(parents=True)
     other = {"name": "Other", "models": {"m": {}}}
-    config.write_text(json.dumps({"model": "ares/old", "providers": {"other": other}, "theme": "dark"}))
+    config.write_text(json.dumps({"providers": {"other": other}, "theme": "dark"}))
     assert coder.main(["--config", str(profile), "opencode-app", "on"]) == 0
     switched = json.loads(config.read_text())
+    assert switched["model"] == "ares/local-model"
     assert switched["providers"]["other"] == other
     assert switched["providers"]["ares"]["settings"]["baseURL"] == "http://127.0.0.1:54321/v1"
     assert list(switched["providers"]["ares"]["models"]) == ["local-model"]

@@ -178,7 +178,8 @@ switch.
 OpenCode lists models from several providers in one picker, so its desktop app can switch between a signed-in hosted plan and
 the served model. `install opencode` installs the desktop app with winget on Windows (package `Anomaly.OpenCode.Desktop`).
 `opencode-app on` adds an `ares` provider with the served model and its context length to `~/.config/opencode/opencode.json`
-(under `XDG_CONFIG_HOME` when set), keeping every other key; `opencode-app off` removes it and `opencode-app status` reports it.
+(under `XDG_CONFIG_HOME` when set) and makes it the default model when none is chosen, keeping every other key;
+`opencode-app off` removes it and a default that points at it and `opencode-app status` reports it.
 A config with comments is left alone. Reopen the app after a change.
 
 ```sh
