@@ -156,6 +156,30 @@ Repeated `start` calls with the same ready profile do not create duplicate serve
 `http://127.0.0.1:<port>/v1/chat/completions`. Readiness verifies the engine and exact model; check real inference separately.
 Ares installs no boot task, LAN listener or authentication layer. See the [security model](SECURITY.md).
 
+## Coding agents
+
+`coder` runs Claude Code or Codex on the server a profile describes, reading the port and served model from the profile. It
+never starts or stops the server; start it first. Options go before the agent name, and everything after it reaches the agent
+unchanged:
+
+```sh
+python -m ares coder --config private/server.yaml claude
+python -m ares coder --config private/server.yaml codex exec "summarize the repository"
+python -m ares coder --config private/server.yaml codex-app on
+python -m ares coder --config private/server.yaml codex-app off
+```
+
+`claude` sets `ANTHROPIC_BASE_URL` and the model for that session only, through the engine's Anthropic Messages endpoint.
+`codex` passes the provider as `-c` overrides and leaves the Codex configuration untouched. Desktop apps that read only their
+saved default need `codex-app on`, which makes the served model the Codex default (app, CLI and editor extensions) and saves the
+previous default in the state directory; `codex-app off` restores it and `codex-app status` prints it. Restart the app after a
+switch.
+
+The engine must parse tool calls: for vLLM add `--enable-auto-tool-choice` and the model's `--tool-call-parser` to `args`.
+`--effort` (default `medium`) is sent as Claude's effort and Codex's reasoning effort; engines with a reasoning parser may
+refuse `high`. Agent requests share the KV cache and generation throughput with every other client of the server, and their
+system prompts and tool definitions alone can take tens of thousands of tokens, so size `max_model_len` for them.
+
 ## Benchmarks
 
 Measure an already-running profile:
